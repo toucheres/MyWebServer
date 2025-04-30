@@ -1,3 +1,4 @@
+#pragma once
 #include <corutine.hpp>
 #include <cstddef>
 #include <string>

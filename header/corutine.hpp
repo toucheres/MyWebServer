@@ -1,8 +1,8 @@
 #pragma once
 #include <coroutine>
 #include <exception>
-#include <queue>
 #include <variant>
+#include <vector>
 
 // 泛型协程任务，可以返回任意类型T的值
 template <typename RET = void, typename YIELD = void> class Task
