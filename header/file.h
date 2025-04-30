@@ -22,7 +22,7 @@ struct LocalFile
     LocalFile(std::string a_path);
     LocalFile(LocalFile&& move);
 };
-struct SocketFile : public corutin
+struct SocketFile : public co_async
 {
     friend SocketFiles;
 

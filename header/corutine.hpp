@@ -1,6 +1,7 @@
 #pragma once
 #include <coroutine>
 #include <exception>
+#include <queue>
 #include <variant>
 
 // 泛型协程任务，可以返回任意类型T的值
@@ -630,8 +631,18 @@ template <class CONTEXT> class Task_Local
         return context;
     }
 };
-class corutin
+class co_async
 {
   public:
     virtual int eventGo() = 0;
+};
+class Co_Manager
+{
+    std::queue<co_async*> tasks;
+
+  public:
+    void go();
+    bool add(co_async* newtask);
+    bool add(co_async& newtask);
+    bool remove(co_async* newtask);
 };

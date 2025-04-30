@@ -3,15 +3,13 @@
 #include <iostream>
 int main()
 {
+    Co_Manager manager;
     int fd = 0;
     SocketFile stdintest(fd);
-    corutin* tasks[10] = {&stdintest};
+    manager.add(stdintest);
     while (1)
     {
-        for(auto& task:tasks)
-        {
-            task->eventGo();
-        }
+        manager.go();
         std::cout << stdintest.read_added();
     }
 }
