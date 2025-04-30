@@ -7,6 +7,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <variant>
 
 // 泛型协程任务，可以返回任意类型T的值
 template <typename RET = void, typename YIELD = void> class Task
@@ -392,6 +393,7 @@ template <> class Task<void, void>
     {
       private:
         std::exception_ptr exception = nullptr;
+        bool is_yield_value = false;
 
       public:
         Task get_return_object() noexcept
@@ -434,6 +436,14 @@ template <> class Task<void, void>
 
         void return_void() noexcept
         {
+            is_yield_value = false;
+        }
+
+        // 添加对空 yield 的支持
+        std::suspend_always yield_value(std::monostate) noexcept
+        {
+            is_yield_value = true;
+            return {};
         }
 
         void get_result()
@@ -442,6 +452,11 @@ template <> class Task<void, void>
             {
                 std::rethrow_exception(exception);
             }
+        }
+
+        bool is_yield() const noexcept
+        {
+            return is_yield_value;
         }
 
         std::coroutine_handle<> continuation = nullptr;
@@ -528,6 +543,14 @@ template <> class Task<void, void>
         handle.promise().get_result();
     }
 
+    // 添加检查是否是 yield 的方法
+    bool is_yield() const noexcept
+    {
+        if (!handle)
+            return false;
+        return handle.promise().is_yield();
+    }
+
     // 转换为等待器
     Awaiter operator co_await() const noexcept
     {
@@ -537,158 +560,74 @@ template <> class Task<void, void>
   private:
     std::coroutine_handle<promise_type> handle;
 };
-
-
-class Task_local
+template<class CONTEXT>
+class Task_imp
 {
   public:
-    // 协程承诺类型
-    class promise_type
-    {
-      private:
-        std::exception_ptr exception = nullptr;
+    // struct Context
+    // {
+    //     int data = 0;
+    // };
+    CONTEXT context;
+    Task<void, void> corutine;
 
-      public:
-        Task_local get_return_object() noexcept
-        {
-            return Task_local{std::coroutine_handle<promise_type>::from_promise(*this)};
-        }
-
-        std::suspend_always initial_suspend() noexcept
-        {
-            return {};
-        }
-
-        auto final_suspend() noexcept
-        {
-            class Awaiter
-            {
-              public:
-                bool await_ready() noexcept
-                {
-                    return false;
-                }
-                void await_resume() noexcept
-                {
-                }
-                std::coroutine_handle<> await_suspend(
-                    std::coroutine_handle<promise_type> h) noexcept
-                {
-                    return h.promise().continuation ? h.promise().continuation
-                                                    : std::noop_coroutine();
-                }
-            };
-
-            return Awaiter{};
-        }
-
-        void unhandled_exception() noexcept
-        {
-            exception = std::current_exception();
-        }
-
-        void return_void() noexcept
-        {
-        }
-
-        void get_result()
-        {
-            if (exception)
-            {
-                std::rethrow_exception(exception);
-            }
-        }
-
-        std::coroutine_handle<> continuation = nullptr;
-    };
-
-    // void类型的等待器
-    struct Awaiter
-    {
-        std::coroutine_handle<promise_type> handle;
-
-        bool await_ready() const noexcept
-        {
-            return !handle || handle.done();
-        }
-
-        std::coroutine_handle<> await_suspend(std::coroutine_handle<> continuation) noexcept
-        {
-            handle.promise().continuation = continuation;
-            return handle;
-        }
-
-        void await_resume()
-        {
-            handle.promise().get_result();
-        }
-    };
-
+  public:
     // 构造函数和析构函数
-    Task_local() noexcept : handle(nullptr)
+    Task_imp() noexcept : corutine(nullptr)
     {
     }
 
-    Task_local(std::coroutine_handle<promise_type> h) noexcept : handle(h)
+    // 接受一个协程函数并创建内部协程
+    template <typename Func> Task_imp(Func&& func) noexcept
+    {
+        corutine = func(std::ref(context));
+    }
+
+    Task_imp(Task_imp&& other) noexcept
+        : context(std::move(other.context)), corutine(std::move(other.corutine))
     {
     }
 
-    Task_local(Task_local&& other) noexcept : handle(other.handle)
-    {
-        other.handle = nullptr;
-    }
-
-    Task_local& operator=(Task_local&& other) noexcept
+    Task_imp& operator=(Task_imp&& other) noexcept
     {
         if (this != &other)
         {
-            if (handle)
-            {
-                handle.destroy();
-            }
-            handle = other.handle;
-            other.handle = nullptr;
+            context = std::move(other.context);
+            corutine = std::move(other.corutine);
         }
         return *this;
     }
 
-    ~Task_local()
-    {
-        if (handle)
-        {
-            handle.destroy();
-        }
-    }
+    ~Task_imp() = default;
 
     // 禁止拷贝
-    Task_local(const Task_local&) = delete;
-    Task_local& operator=(const Task_local&) = delete;
+    Task_imp(const Task_imp&) = delete;
+    Task_imp& operator=(const Task_imp&) = delete;
 
-    // 协程操作接口
+    // 协程操作接口 - 转发到内部协程
     bool done() const noexcept
     {
-        return !handle || handle.done();
+        return corutine.done();
     }
 
     void resume() const
     {
-        if (handle)
-        {
-            handle.resume();
-        }
+        corutine.resume();
     }
 
     void get_result()
     {
-        handle.promise().get_result();
+        corutine.get_result();
     }
 
-    // 转换为等待器
-    Awaiter operator co_await() const noexcept
+    // 获取上下文
+    CONTEXT& get_context() noexcept
     {
-        return Awaiter{handle};
+        return context;
     }
 
-  private:
-    std::coroutine_handle<promise_type> handle;
+    const CONTEXT& get_context() const noexcept
+    {
+        return context;
+    }
 };
