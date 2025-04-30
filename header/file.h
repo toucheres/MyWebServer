@@ -1,31 +1,66 @@
 #include <corutine.hpp>
 #include <cstddef>
-#include <future>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
-
-struct File
+struct LocalFiles;
+struct SocketFiles;
+struct LocalFile
 {
+    friend LocalFiles;
+
   private:
     std::vector<char> content;
     std::string path = "";
     size_t size = 0;
+    std::string_view test;
 
   public:
-    std::string_view read_sync();
-    Task<void, std::string_view> read_async();
-    File(std::string a_path);
-    File(const File& copy);
-    File(File&& move){}
+    bool load(std::string& path);
+    std::string_view read();
+    LocalFile(std::string a_path);
+    LocalFile(LocalFile&& move);
 };
-struct LocalFileCache
+struct SocketFile
+{
+    friend SocketFiles;
+
+  private:
+    class CONTEXT
+    {
+        friend SocketFile;
+        int fd;
+        std::vector<char> content;
+        size_t left = 0;
+        size_t right = 0;
+    };
+    static Task<> eventfun(CONTEXT& context);
+    Task_Local<CONTEXT> read_async_handle = eventfun;
+
+  public:
+    void eventGo();
+    std::string_view read_added();
+    std::string_view read_all();
+    bool load(int a_fd);
+    SocketFile(int a_fd);
+    SocketFile(SocketFile&& move);
+};
+struct LocalFiles
 {
   private:
-    std::unordered_map<std::string, File> fileMap;
+    std::unordered_map<std::string, LocalFile> fileMap;
 
   public:
-    bool load(std::string);
-    File& get();
+    bool add(std::string& path);
+    LocalFile& get(std::string& path);
+};
+struct SocketFiles
+{
+  private:
+    std::unordered_map<std::string, SocketFile> fileMap;
+
+  public:
+    bool add(int fd);
+    SocketFile& get(int fd);
 };
