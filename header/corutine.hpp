@@ -2,7 +2,6 @@
 #include <any>
 #include <coroutine>
 #include <exception>
-#include <functional>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -561,11 +560,13 @@ template <> class Task<void, void>
   private:
     std::coroutine_handle<promise_type> handle;
 };
-
-template<class CONTEXT>
-class Task_imp
+template <class CONTEXT> class Task_imp
 {
   public:
+    // struct Context
+    // {
+    //     int data = 0;
+    // };
     CONTEXT context;
     Task<void, void> corutine;
 
@@ -581,13 +582,10 @@ class Task_imp
         corutine = func(std::ref(context));
     }
 
-    // 新增：简化构造 - 直接接受协程函数
-    template <typename Func, 
-              typename = std::enable_if_t<std::is_invocable_r_v<Task<void, void>, Func, CONTEXT&>>>
-    static Task_imp create(Func&& func) {
-        Task_imp task;
-        task.corutine = func(task.context);
-        return task;
+    // 直接接受协程函数指针，无需lambda包装
+    template <typename R, typename Y> Task_imp(Task<R, Y> (*func)(CONTEXT&)) noexcept
+    {
+        corutine = func(context);
     }
 
     Task_imp(Task_imp&& other) noexcept
@@ -638,70 +636,3 @@ class Task_imp
         return context;
     }
 };
-
-// 全局辅助函数，简化 Task_imp 的创建
-template <typename CONTEXT, typename Func>
-auto make_task(Func&& func) {
-    return Task_imp<CONTEXT>::create(std::forward<Func>(func));
-}
-
-// 函数特征类，用于提取函数参数类型
-template<typename T>
-struct function_traits;
-
-// 特化版本：普通函数
-template<typename R, typename... Args>
-struct function_traits<R(Args...)> {
-    using return_type = R;
-    static constexpr std::size_t arity = sizeof...(Args);
-    
-    template <std::size_t N>
-    struct argument {
-        static_assert(N < arity, "索引越界");
-        using type = typename std::tuple_element<N, std::tuple<Args...>>::type;
-    };
-    
-    using first_argument_type = typename argument<0>::type;
-};
-
-// 特化版本：函数引用
-template<typename R, typename... Args>
-struct function_traits<R(&)(Args...)> : function_traits<R(Args...)> {};
-
-// 特化版本：函数指针
-template<typename R, typename... Args>
-struct function_traits<R(*)(Args...)> : function_traits<R(Args...)> {};
-
-// 特化版本：成员函数
-template<typename C, typename R, typename... Args>
-struct function_traits<R(C::*)(Args...)> : function_traits<R(Args...)> {};
-
-// 特化版本：const成员函数
-template<typename C, typename R, typename... Args>
-struct function_traits<R(C::*)(Args...) const> : function_traits<R(Args...)> {};
-
-// 特化版本：callable对象
-template<typename F>
-struct function_traits {
-    using call_type = function_traits<decltype(&F::operator())>;
-    using return_type = typename call_type::return_type;
-    static constexpr std::size_t arity = call_type::arity - 1; // 减去this指针
-    
-    template <std::size_t N>
-    struct argument {
-        static_assert(N < arity, "索引越界");
-        using type = typename call_type::template argument<N+1>::type;
-    };
-    
-    using first_argument_type = typename argument<0>::type;
-};
-
-// 修复版 make_task_auto 函数
-template <typename Func>
-auto make_task_auto(Func&& func) {
-    // 使用函数特征类提取第一个参数类型
-    using ContextRefType = typename function_traits<std::remove_reference_t<Func>>::first_argument_type;
-    using ContextType = std::remove_reference_t<std::remove_const_t<ContextRefType>>;
-    
-    return Task_imp<ContextType>::create(std::forward<Func>(func));
-}
