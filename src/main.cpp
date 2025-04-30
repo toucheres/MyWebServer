@@ -5,9 +5,13 @@ int main()
 {
     int fd = 0;
     SocketFile stdintest(fd);
+    corutin* tasks[10] = {&stdintest};
     while (1)
     {
-        stdintest.eventGo();
+        for(auto& task:tasks)
+        {
+            task->eventGo();
+        }
         std::cout << stdintest.read_added();
     }
 }

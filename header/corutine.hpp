@@ -630,3 +630,8 @@ template <class CONTEXT> class Task_Local
         return context;
     }
 };
+class corutin
+{
+  public:
+    virtual int eventGo() = 0;
+};

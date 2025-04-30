@@ -22,7 +22,7 @@ struct LocalFile
     LocalFile(std::string a_path);
     LocalFile(LocalFile&& move);
 };
-struct SocketFile
+struct SocketFile : public corutin
 {
     friend SocketFiles;
 
@@ -39,12 +39,13 @@ struct SocketFile
     Task_Local<CONTEXT> read_async_handle = eventfun;
 
   public:
-    void eventGo();
+    virtual int eventGo() final;
     std::string_view read_added();
     std::string_view read_all();
     bool load(int a_fd);
     SocketFile(int a_fd);
     SocketFile(SocketFile&& move);
+    SocketFile(const SocketFile& copy);
 };
 struct LocalFiles
 {
