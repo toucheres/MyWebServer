@@ -1,12 +1,6 @@
 #pragma once
-#include <any>
 #include <coroutine>
 #include <exception>
-#include <mutex>
-#include <stdexcept>
-#include <string>
-#include <thread>
-#include <unordered_map>
 #include <variant>
 
 // 泛型协程任务，可以返回任意类型T的值
@@ -560,7 +554,7 @@ template <> class Task<void, void>
   private:
     std::coroutine_handle<promise_type> handle;
 };
-template <class CONTEXT> class Task_imp
+template <class CONTEXT> class Task_Local
 {
   public:
     // struct Context
@@ -572,28 +566,28 @@ template <class CONTEXT> class Task_imp
 
   public:
     // 构造函数和析构函数
-    Task_imp() noexcept : corutine(nullptr)
+    Task_Local() noexcept : corutine(nullptr)
     {
     }
 
     // 接受一个协程函数并创建内部协程
-    template <typename Func> Task_imp(Func&& func) noexcept
-    {
-        corutine = func(std::ref(context));
-    }
-
-    // 直接接受协程函数指针，无需lambda包装
-    template <typename R, typename Y> Task_imp(Task<R, Y> (*func)(CONTEXT&)) noexcept
+    template <typename Func> Task_Local(Func&& func) noexcept
     {
         corutine = func(context);
     }
 
-    Task_imp(Task_imp&& other) noexcept
+    // 直接接受协程函数指针，无需lambda包装
+    template <typename R, typename Y> Task_Local(Task<R, Y> (*func)(CONTEXT&)) noexcept
+    {
+        corutine = func(context);
+    }
+
+    Task_Local(Task_Local&& other) noexcept
         : context(std::move(other.context)), corutine(std::move(other.corutine))
     {
     }
 
-    Task_imp& operator=(Task_imp&& other) noexcept
+    Task_Local& operator=(Task_Local&& other) noexcept
     {
         if (this != &other)
         {
@@ -603,11 +597,11 @@ template <class CONTEXT> class Task_imp
         return *this;
     }
 
-    ~Task_imp() = default;
+    ~Task_Local() = default;
 
     // 禁止拷贝
-    Task_imp(const Task_imp&) = delete;
-    Task_imp& operator=(const Task_imp&) = delete;
+    Task_Local(const Task_Local&) = delete;
+    Task_Local& operator=(const Task_Local&) = delete;
 
     // 协程操作接口 - 转发到内部协程
     bool done() const noexcept
