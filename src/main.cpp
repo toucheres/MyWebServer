@@ -10,6 +10,7 @@ int main()
     while (1)
     {
         manager.go();
-        std::cout << stdintest.read_added();
+        std::cout << "get: " << stdintest.read_added();
+        std::cout << "allget: " << stdintest.read_all();
     }
 }

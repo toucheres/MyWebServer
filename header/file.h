@@ -45,7 +45,7 @@ struct SocketFile : public co_async
     bool load(int a_fd);
     SocketFile(int a_fd);
     SocketFile(SocketFile&& move);
-    SocketFile(const SocketFile& copy);
+    // SocketFile(const SocketFile& copy);
 };
 struct LocalFiles
 {

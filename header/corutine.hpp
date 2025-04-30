@@ -638,11 +638,38 @@ class co_async
 };
 class Co_Manager
 {
-    std::queue<co_async*> tasks;
+    std::vector<co_async*> tasks;
 
   public:
-    void go();
-    bool add(co_async* newtask);
-    bool add(co_async& newtask);
-    bool remove(co_async* newtask);
+    void go()
+    {
+        for (auto& task: tasks)
+        {
+            if (task != nullptr)
+            {
+                task->eventGo();
+            }
+        }
+    }
+    bool add(co_async* newtask)
+    {
+        tasks.emplace_back(newtask);
+        return true;
+    }
+    bool add(co_async& newtask)
+    {
+        tasks.emplace_back(&newtask);
+        return true;
+    }
+    bool remove(co_async* uselesstask)
+    {
+        for (auto& task : tasks)
+        {
+            if (task == uselesstask)
+            {
+                task = nullptr;
+            }
+        }
+        return true;
+    }
 };
