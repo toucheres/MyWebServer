@@ -120,18 +120,23 @@ class HttpServer
     {
         stop();
     }
-
+    bool setReuseAddr(int& fd)
+    {
+        int opt = 1;
+        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+        {
+            std::cerr << "设置SO_REUSEADDR失败: " << strerror(errno) << std::endl;
+            close(fd);
+            fd = -1;
+            return false;
+        }
+        return true;
+    }
     bool start()
     {
         int listenfd;
         listenfd = makeSocket();
-        int opt = 1;
-        if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-        {
-            std::cerr << "设置SO_REUSEADDR失败: " << strerror(errno) << std::endl;
-            close(listenfd);
-            listenfd = -1;
-        }
+        setReuseAddr(listenfd);
         // 地址绑定到listenfd
         bindSocket(listenfd);
         // 监听listenfd
@@ -144,7 +149,7 @@ class HttpServer
             while (1)
             {
                 connfd = AcceptSocketNonBlocking(listenfd, &client, (socklen_t*)(&size_client));
-                if(connfd>0)
+                if (connfd > 0)
                 {
                     break;
                 }
