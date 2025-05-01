@@ -1,6 +1,7 @@
 #pragma once
 #include <corutine.hpp>
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -36,7 +37,7 @@ struct SocketFile : public co_async
         mutable size_t left = 0;
         mutable size_t right = 0;
     };
-    static Task<> eventfun(CONTEXT& context);
+    static Task<> eventfun(std::shared_ptr<CONTEXT> context);
     Task_Local<CONTEXT> handle = eventfun;
 
   public:

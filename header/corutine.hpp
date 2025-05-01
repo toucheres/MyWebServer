@@ -1,6 +1,9 @@
 #pragma once
 #include <coroutine>
+#include <cstddef>
 #include <exception>
+#include <memory>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -506,6 +509,14 @@ template <> class Task<void, void>
         }
         return *this;
     }
+    Task& operator=(std::nullptr_t) noexcept
+    {
+        if (handle)
+        {
+            handle.destroy();
+        }
+        return *this;
+    }
 
     ~Task()
     {
@@ -562,7 +573,7 @@ template <class CONTEXT> class Task_Local
     // {
     //     int data = 0;
     // };
-    CONTEXT context;
+    std::shared_ptr<CONTEXT> context;
     Task<void, void> corutine;
 
   public:
@@ -574,18 +585,19 @@ template <class CONTEXT> class Task_Local
     // 接受一个协程函数并创建内部协程
     template <typename Func> Task_Local(Func&& func) noexcept
     {
+        context = std::make_shared<CONTEXT>();
         corutine = func(context);
-
     }
 
     // 直接接受协程函数指针，无需lambda包装
     template <typename R, typename Y> Task_Local(Task<R, Y> (*func)(CONTEXT&)) noexcept
     {
+        context = std::make_shared<CONTEXT>();
         corutine = func(context);
     }
 
     Task_Local(Task_Local&& other) noexcept
-        : context(std::move(other.context)), corutine(std::move(other.corutine))
+        : context(other.context), corutine(std::move(other.corutine))
     {
     }
 
@@ -597,6 +609,17 @@ template <class CONTEXT> class Task_Local
             corutine = std::move(other.corutine);
         }
         return *this;
+    }
+    Task_Local& operator=(std::nullptr_t) noexcept
+    {
+        context.reset();
+        context = nullptr;
+        this->corutine = nullptr;
+        return *this;
+    }
+    operator bool()
+    {
+        return context != nullptr;
     }
 
     ~Task_Local() = default;
@@ -622,12 +645,12 @@ template <class CONTEXT> class Task_Local
     }
 
     // 获取上下文
-    CONTEXT& get_context() noexcept
+    std::shared_ptr<CONTEXT> get_context() noexcept
     {
         return context;
     }
 
-    const CONTEXT& get_context() const noexcept
+    const std::shared_ptr<CONTEXT> get_context() const noexcept
     {
         return context;
     }
@@ -635,7 +658,7 @@ template <class CONTEXT> class Task_Local
 class co_async
 {
   public:
-    virtual int eventGo() const= 0;
+    virtual int eventGo() const = 0;
 };
 class Co_Manager
 {
@@ -644,7 +667,7 @@ class Co_Manager
   public:
     void go()
     {
-        for (auto& task: tasks)
+        for (auto& task : tasks)
         {
             if (task != nullptr)
             {

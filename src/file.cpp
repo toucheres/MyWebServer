@@ -2,6 +2,7 @@
 #include <file.h>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -53,11 +54,16 @@ SocketFile::SocketFile(int a_fd)
 
 SocketFile::~SocketFile()
 {
-    close(handle.context.fd);
+    // 防止临时变量析构后close
+    if (handle.context != nullptr)
+    {
+        close(handle.context->fd);
+    }
 }
 
 SocketFile::SocketFile(SocketFile&& move) : handle(std::move(move.handle))
 {
+    move.handle.context = nullptr;
 }
 
 SocketFile& SocketFile::operator=(SocketFile&& move)
@@ -72,30 +78,30 @@ SocketFile& SocketFile::operator=(SocketFile&& move)
 
 bool SocketFile::load(int a_fd)
 {
-    handle.get_context().fd = a_fd;
-    handle.get_context().left = 0;
-    handle.get_context().right = 0;
-    handle.get_context().content.resize(4096); // 预分配缓冲区
+    handle.get_context()->fd = a_fd;
+    handle.get_context()->left = 0;
+    handle.get_context()->right = 0;
+    handle.get_context()->content.resize(4096); // 预分配缓冲区
     return true;
 }
 
-Task<> SocketFile::eventfun(CONTEXT& context)
+Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
 {
     while (true)
     {
         // 检查缓冲区是否需要扩容
-        if (context.right >= context.content.size())
+        if (context->right >= context->content.size())
         {
-            context.content.resize(context.content.size() * 2);
+            context->content.resize(context->content.size() * 2);
         }
 
         // 异步读取数据
-        ssize_t n = read(context.fd, context.content.data() + context.right,
-                         context.content.size() - context.right);
+        ssize_t n = read(context->fd, context->content.data() + context->right,
+                         context->content.size() - context->right);
 
         if (n > 0)
         {
-            context.right += n;
+            context->right += n;
         }
         else if (n == 0)
         {
@@ -110,7 +116,8 @@ Task<> SocketFile::eventfun(CONTEXT& context)
         else
         {
             // 读取错误
-            std::cerr << "Socket read error: " << strerror(errno) << std::endl;
+            std::cerr << "Socket read error: " << strerror(errno) << "fd: " << context->fd
+                      << std::endl;
         }
 
         co_yield {};
@@ -125,20 +132,20 @@ int SocketFile::eventGo() const
 
 const std::string_view SocketFile::read_added() const
 {
-    if (handle.get_context().left >= handle.get_context().right)
+    if (handle.get_context()->left >= handle.get_context()->right)
     {
         return std::string_view();
     }
 
-    std::string_view result(handle.get_context().content.data() + handle.get_context().left,
-                            handle.get_context().right - handle.get_context().left);
-    handle.get_context().left = handle.get_context().right;
+    std::string_view result(handle.get_context()->content.data() + handle.get_context()->left,
+                            handle.get_context()->right - handle.get_context()->left);
+    handle.get_context()->left = handle.get_context()->right;
     return result;
 }
 
 const std::string_view SocketFile::read_all() const
 {
-    return std::string_view(handle.get_context().content.data(), handle.get_context().right);
+    return std::string_view(handle.get_context()->content.data(), handle.get_context()->right);
 }
 
 // LocalFiles实现
