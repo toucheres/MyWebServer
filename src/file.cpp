@@ -63,6 +63,7 @@ SocketFile::SocketFile(SocketFile&& move) : handle(std::move(move.handle))
 SocketFile& SocketFile::operator=(SocketFile&& move)
 {
     this->handle = std::move(move.handle);
+    return *this;
 }
 
 // SocketFile::SocketFile(const SocketFile& copy)
@@ -129,17 +130,15 @@ const std::string_view SocketFile::read_added() const
         return std::string_view();
     }
 
-    std::string_view result(
-        handle.get_context().content.data() + handle.get_context().left,
-        handle.get_context().right - handle.get_context().left);
+    std::string_view result(handle.get_context().content.data() + handle.get_context().left,
+                            handle.get_context().right - handle.get_context().left);
     handle.get_context().left = handle.get_context().right;
     return result;
 }
 
 const std::string_view SocketFile::read_all() const
 {
-    return std::string_view(handle.get_context().content.data(),
-                            handle.get_context().right);
+    return std::string_view(handle.get_context().content.data(), handle.get_context().right);
 }
 
 // LocalFiles实现
@@ -161,24 +160,22 @@ LocalFile& LocalFiles::get(std::string& path)
 // SocketFiles实现
 bool SocketFiles::add(int fd)
 {
-    std::string key = std::to_string(fd);
-    auto [it, inserted] = fileMap.try_emplace(key, fd);
+    auto [it, inserted] = fileMap.try_emplace(fd, SocketFile{fd});
     return inserted;
 }
 
 SocketFile& SocketFiles::get(int fd)
 {
-    std::string key = std::to_string(fd);
-    return fileMap.at(key);
+    return fileMap.at(fd);
 }
 
-const std::unordered_map<std::string, SocketFile>& SocketFiles::getMap()
+const std::unordered_map<int, SocketFile>& SocketFiles::getMap()
 {
     return fileMap;
 }
 int SocketFiles::eventGo() const
 {
-    for(auto& each:fileMap)
+    for (auto& each : fileMap)
     {
         each.second.eventGo();
     }

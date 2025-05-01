@@ -63,11 +63,11 @@ struct LocalFiles
 struct SocketFiles : public co_async
 {
   private:
-    std::unordered_map<std::string, SocketFile> fileMap;
+    std::unordered_map<int, SocketFile> fileMap;
 
   public:
     virtual int eventGo() const override;
     bool add(int fd);
     SocketFile& get(int fd);
-    const std::unordered_map<std::string, SocketFile>& getMap();
+    const std::unordered_map<int, SocketFile>& getMap();
 };
