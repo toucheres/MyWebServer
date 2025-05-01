@@ -31,21 +31,24 @@ struct SocketFile : public co_async
     class CONTEXT
     {
         friend SocketFile;
-        int fd;
-        std::vector<char> content;
-        size_t left = 0;
-        size_t right = 0;
+        int fd=-1;
+        std::vector<char> content={};
+        mutable size_t left = 0;
+        mutable size_t right = 0;
     };
     static Task<> eventfun(CONTEXT& context);
-    Task_Local<CONTEXT> read_async_handle = eventfun;
+    Task_Local<CONTEXT> handle = eventfun;
 
   public:
-    virtual int eventGo() final;
-    std::string_view read_added();
-    std::string_view read_all();
+    virtual int eventGo() const final;
+    const std::string_view read_added() const;
+    const std::string_view read_all() const;
     bool load(int a_fd);
     SocketFile(int a_fd);
+    ~SocketFile();
+    SocketFile()=default;
     SocketFile(SocketFile&& move);
+    SocketFile& operator=(SocketFile && move);
     // SocketFile(const SocketFile& copy);
 };
 struct LocalFiles
@@ -65,4 +68,5 @@ struct SocketFiles
   public:
     bool add(int fd);
     SocketFile& get(int fd);
+    const std::unordered_map<std::string, SocketFile>& getMap();
 };

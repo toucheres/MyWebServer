@@ -575,6 +575,7 @@ template <class CONTEXT> class Task_Local
     template <typename Func> Task_Local(Func&& func) noexcept
     {
         corutine = func(context);
+
     }
 
     // 直接接受协程函数指针，无需lambda包装
@@ -634,7 +635,7 @@ template <class CONTEXT> class Task_Local
 class co_async
 {
   public:
-    virtual int eventGo() = 0;
+    virtual int eventGo() const= 0;
 };
 class Co_Manager
 {

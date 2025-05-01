@@ -141,29 +141,24 @@ class HttpServer
         bindSocket(listenfd);
         // 监听listenfd
         listenSocket(listenfd);
+        SocketFiles sockets;
         while (1)
         {
             sockaddr client;
             size_t size_client = sizeof(client);
-            int connfd = 0;
-            while (1)
+            int connfd = AcceptSocket(listenfd, &client, (socklen_t*)(&size_client));
+            if (connfd < 0)
             {
-                connfd = AcceptSocketNonBlocking(listenfd, &client, (socklen_t*)(&size_client));
-                if (connfd > 0)
-                {
-                    break;
-                }
+                std::cout << "wrong fd\n";
+                continue;
             }
-
-            struct sockaddr_in servaddr;
-            char buff[4096];
-            for (int i = 0; i < 4096; i++)
+            sockets.add(connfd);
+            for (auto& each : sockets.getMap())
             {
-                buff[i] = 0;
+                std::cout << each.second.eventGo();
+                std::cout << each.second.read_added();
             }
-            int n = recv(connfd, buff, 4096, 0);
-            printf("recv msg from client:%s\n", buff);
-            close(connfd);
+            // std::cout << "recv msg from client:%s\n" << sockets.get() << '\n';
         }
         close(listenfd);
         return 0;
