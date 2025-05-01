@@ -176,3 +176,11 @@ const std::unordered_map<std::string, SocketFile>& SocketFiles::getMap()
 {
     return fileMap;
 }
+int SocketFiles::eventGo() const
+{
+    for(auto& each:fileMap)
+    {
+        each.second.eventGo();
+    }
+    return 0;
+}

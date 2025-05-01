@@ -17,6 +17,8 @@ class HttpServer
     std::string ip_listening;
     bool running;
     LocalFiles static_files;
+    Co_Manager manager;
+    SocketFiles sockets;
 
   public:
     // 创建套接字
@@ -114,6 +116,13 @@ class HttpServer
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080)
         : ip_listening(ip_listening), port(port), running(false), server_fd(-1)
     {
+        server_fd = makeSocket();
+        setReuseAddr(server_fd);
+        // 地址绑定到listenfd
+        bindSocket(server_fd);
+        // 监听listenfd
+        listenSocket(server_fd);
+        manager.add(sockets);
     }
 
     ~HttpServer()
@@ -134,37 +143,30 @@ class HttpServer
     }
     bool start()
     {
-        int listenfd;
-        listenfd = makeSocket();
-        setReuseAddr(listenfd);
-        // 地址绑定到listenfd
-        bindSocket(listenfd);
-        // 监听listenfd
-        listenSocket(listenfd);
-        SocketFiles sockets;
+        sockaddr client;
+        size_t size_client = sizeof(client);
         while (1)
         {
-            sockaddr client;
-            size_t size_client = sizeof(client);
-            int connfd = AcceptSocket(listenfd, &client, (socklen_t*)(&size_client));
+            int connfd = AcceptSocket(server_fd, &client, (socklen_t*)(&size_client));
             if (connfd < 0)
             {
                 std::cout << "wrong fd\n";
                 continue;
             }
             sockets.add(connfd);
+            manager.go();
             for (auto& each : sockets.getMap())
             {
-                std::cout << each.second.eventGo();
                 std::cout << each.second.read_added();
             }
             // std::cout << "recv msg from client:%s\n" << sockets.get() << '\n';
         }
-        close(listenfd);
+        close(server_fd);
         return 0;
     }
     bool stop()
     {
+        return true;
     }
     void run();
 
