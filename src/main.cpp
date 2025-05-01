@@ -1,9 +1,8 @@
 #include <corutine.hpp>
 #include <file.h>
-#include <iostream>
-#include <http.hpp>
+#include <http.h>
 int main()
 {
-    HttpServer test{};
-    test.start();
+    HttpServer http{};
+    http.start();
 }

@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <exception>
 #include <memory>
-#include <optional>
 #include <variant>
 #include <vector>
 
