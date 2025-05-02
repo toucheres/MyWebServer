@@ -136,7 +136,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
     }
 }
 
-int SocketFile::eventGo() const
+int SocketFile::eventGo()
 {
     handle.resume();
     return 0;
@@ -243,7 +243,7 @@ const std::unordered_map<int, SocketFile>& SocketFiles::getMap()
 {
     return fileMap;
 }
-int SocketFiles::eventGo() const
+int SocketFiles::eventGo()
 {
     for (auto& each : fileMap)
     {

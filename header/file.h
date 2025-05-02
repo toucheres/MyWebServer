@@ -31,6 +31,7 @@ struct SocketFile : public co_async
   private:
     class CONTEXT
     {
+    public:
         friend SocketFile;
         int fd=-1;
         std::vector<char> content={};
@@ -38,9 +39,9 @@ struct SocketFile : public co_async
         mutable size_t right = 0;
     };
     static Task<> eventfun(std::shared_ptr<CONTEXT> context);
-    Task_Local<CONTEXT> handle = eventfun;
 
   public:
+    Task_Local<CONTEXT> handle = eventfun;
     virtual int eventGo() final;
     const std::string_view read_added() const;
     const std::string_view read_line() const;

@@ -1,6 +1,8 @@
 #include "http.h"
 #include <errno.h>
 #include <iostream>
+#include <string_view>
+#include <thread>
 #include <unistd.h>
 
 int HttpServer::eventGo()
@@ -157,7 +159,7 @@ bool HttpServer::start()
     size_t size_client = sizeof(client);
     while (1)
     {
-        sleep(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         manager.go();
         int connfd = AcceptSocket(server_fd, &client, (socklen_t*)(&size_client));
         if (connfd == -2)
@@ -174,9 +176,12 @@ bool HttpServer::start()
         }
         for (auto& each : sockets.getMap())
         {
-            std::cout << each.second.read_line();
+            std::string_view tp = each.second.read_line();
+            if (tp!="")
+            {
+                std::cout << "fd: " << each.second.handle.context.get()->fd<<" context: "<<tp;
+            }
         }
-        // std::cout << "recv msg from client:%s\n" << sockets.get() << '\n';
     }
     close(server_fd);
     return 0;
