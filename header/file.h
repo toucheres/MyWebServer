@@ -41,9 +41,11 @@ struct SocketFile : public co_async
     Task_Local<CONTEXT> handle = eventfun;
 
   public:
-    virtual int eventGo() const final;
+    virtual int eventGo() final;
     const std::string_view read_added() const;
+    const std::string_view read_line() const;
     const std::string_view read_all() const;
+    bool setNonBlocking();
     bool load(int a_fd);
     SocketFile(int a_fd);
     ~SocketFile();
@@ -67,7 +69,7 @@ struct SocketFiles : public co_async
     std::unordered_map<int, SocketFile> fileMap;
 
   public:
-    virtual int eventGo() const override;
+    virtual int eventGo() override;
     bool add(int fd);
     SocketFile& get(int fd);
     const std::unordered_map<int, SocketFile>& getMap();

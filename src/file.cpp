@@ -1,9 +1,11 @@
 #include <errno.h>
+#include <fcntl.h>
 #include <file.h>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <string.h>
+#include <string_view>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -50,6 +52,7 @@ std::string_view LocalFile::read()
 SocketFile::SocketFile(int a_fd)
 {
     load(a_fd);
+    setNonBlocking();
 }
 
 SocketFile::~SocketFile()
@@ -96,6 +99,15 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         }
 
         // 异步读取数据
+        int flags = fcntl(context->fd, F_GETFL, 0);
+        if (flags == -1)
+        {
+            std::cerr << "获取socket标志失败: " << strerror(errno) << std::endl;
+        }
+        if (fcntl(context->fd, F_SETFL, flags | O_NONBLOCK) == -1)
+        {
+            std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
+        }
         ssize_t n = read(context->fd, context->content.data() + context->right,
                          context->content.size() - context->right);
 
@@ -143,9 +155,60 @@ const std::string_view SocketFile::read_added() const
     return result;
 }
 
+const std::string_view SocketFile::read_line() const
+{
+    size_t& left = this->handle.get_context()->left;
+    size_t& right = this->handle.get_context()->right;
+    if (right - left <= 1)
+    {
+        return std::string_view{""};
+    }
+    else
+    {
+        int fiannl = -1;
+        for (size_t i = left; i <= right - 1; i++)
+        {
+            if (this->handle.get_context()->content[i] == '\r' &&
+                this->handle.get_context()->content[i + 1] == '\n')
+            {
+                fiannl = i + 1;
+                break;
+            }
+        }
+        if (fiannl != -1)
+        {
+            auto tp = std::string_view(
+                &this->handle.get_context()->content[this->handle.get_context()->left],
+                fiannl - left + 1);
+            left = fiannl + 1;
+            return tp;
+        }
+        else
+        {
+            return std::string_view{""};
+        }
+    }
+}
+
 const std::string_view SocketFile::read_all() const
 {
     return std::string_view(handle.get_context()->content.data(), handle.get_context()->right);
+}
+
+bool SocketFile::setNonBlocking()
+{
+    int flags = fcntl(this->handle.context->fd, F_GETFL, 0);
+    if (flags == -1)
+    {
+        std::cerr << "获取socket标志失败: " << strerror(errno) << std::endl;
+        return false;
+    }
+    if (fcntl(this->handle.context->fd, F_SETFL, flags | O_NONBLOCK) == -1)
+    {
+        std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
+        return false;
+    }
+    return true;
 }
 
 // LocalFiles实现

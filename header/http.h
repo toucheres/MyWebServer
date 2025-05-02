@@ -1,6 +1,9 @@
 #pragma once
+#include "corutine.hpp"
 #include <cstring>
 #include <file.h>
+#include <functional>
+#include <map>
 #include <netinet/in.h>
 #include <string>
 #include <sys/fcntl.h>
@@ -8,7 +11,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-class HttpServer
+class HttpServer:public co_async
 {
   private:
     int server_fd;
@@ -19,25 +22,23 @@ class HttpServer
     Co_Manager manager;
     SocketFiles sockets;
     // 创建套接字
+    int eventGo() override;
     int makeSocket();
     int bindSocket(int server_fd);
     bool listenSocket(int server_fd, size_t listenLenth = 5);
     int AcceptSocket(int server_fd, struct sockaddr* client_addr, socklen_t* client_addr_len);
-    bool setNonBlocking(int sockfd);
-
-    // 非阻塞版本的Accept
-    int AcceptSocketNonBlocking(int server_fd, struct sockaddr* client_addr,
-                                socklen_t* client_addr_len);
+    bool setReuseAddr(int& fd);
+    std::string processRequest(const std::string& request);
+    std::map<std::string, std::function<void()>> callbacks;
+    std::map<std::string, std::function<void(std::string)>> callbacks_format;
 
   public:
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
-
-    bool setReuseAddr(int& fd);
     bool start();
     bool stop();
     void run();
-
-    std::string processRequest(const std::string& request);
+    void addCallback(std::pair<std::string, std::function<void()>> callback);
+    void addCallbackFormat(std::pair<std::string, std::function<void(std::string)>> callback);
     void handleClient(int client_fd);
 };

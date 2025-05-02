@@ -657,7 +657,7 @@ template <class CONTEXT> class Task_Local
 class co_async
 {
   public:
-    virtual int eventGo() const = 0;
+    virtual int eventGo()= 0;
 };
 class Co_Manager
 {
