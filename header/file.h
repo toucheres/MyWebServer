@@ -41,7 +41,7 @@ struct SocketFile : public co_async
     static Task<> eventfun(std::shared_ptr<CONTEXT> context);
 
   public:
-    Task_Local<CONTEXT> handle = eventfun;
+    Task_Away<CONTEXT> handle = eventfun;
     virtual int eventGo() final;
     const std::string_view read_added() const;
     const std::string_view read_line() const;

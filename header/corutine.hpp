@@ -385,6 +385,10 @@ template <typename YIELD> class Task<void, YIELD>
 template <> class Task<void, void>
 {
   public:
+    operator bool()
+    {
+        return this->handle != nullptr;
+    }
     // 协程承诺类型
     class promise_type
     {
@@ -485,7 +489,10 @@ template <> class Task<void, void>
     Task() noexcept : handle(nullptr)
     {
     }
-
+    Task(std::nullptr_t)
+    {
+        Task();
+    }
     Task(std::coroutine_handle<promise_type> h) noexcept : handle(h)
     {
     }
@@ -514,6 +521,7 @@ template <> class Task<void, void>
         {
             handle.destroy();
         }
+        handle = nullptr;
         return *this;
     }
 
@@ -565,7 +573,21 @@ template <> class Task<void, void>
   private:
     std::coroutine_handle<promise_type> handle;
 };
-template <class CONTEXT> class Task_Local
+template <class CONTEXT = void> class Task_Local : public CONTEXT
+{
+  public:
+    virtual Task<> co_fun() = 0;
+    Task<> handle = nullptr;
+    void resume()
+    {
+        if (!handle)
+        {
+            handle = co_fun();
+        }
+        return handle.resume();
+    }
+};
+template <class CONTEXT> class Task_Away
 {
   public:
     // struct Context
@@ -577,30 +599,30 @@ template <class CONTEXT> class Task_Local
 
   public:
     // 构造函数和析构函数
-    Task_Local() noexcept : corutine(nullptr)
+    Task_Away() noexcept : corutine(nullptr)
     {
     }
 
     // 接受一个协程函数并创建内部协程
-    template <typename Func> Task_Local(Func&& func) noexcept
+    template <typename Func> Task_Away(Func&& func) noexcept
     {
         context = std::make_shared<CONTEXT>();
         corutine = func(context);
     }
 
     // 直接接受协程函数指针，无需lambda包装
-    template <typename R, typename Y> Task_Local(Task<R, Y> (*func)(CONTEXT&)) noexcept
+    template <typename R, typename Y> Task_Away(Task<R, Y> (*func)(CONTEXT&)) noexcept
     {
         context = std::make_shared<CONTEXT>();
         corutine = func(context);
     }
 
-    Task_Local(Task_Local&& other) noexcept
+    Task_Away(Task_Away&& other) noexcept
         : context(other.context), corutine(std::move(other.corutine))
     {
     }
 
-    Task_Local& operator=(Task_Local&& other) noexcept
+    Task_Away& operator=(Task_Away&& other) noexcept
     {
         if (this != &other)
         {
@@ -609,7 +631,7 @@ template <class CONTEXT> class Task_Local
         }
         return *this;
     }
-    Task_Local& operator=(std::nullptr_t) noexcept
+    Task_Away& operator=(std::nullptr_t) noexcept
     {
         context.reset();
         context = nullptr;
@@ -621,11 +643,11 @@ template <class CONTEXT> class Task_Local
         return context != nullptr;
     }
 
-    ~Task_Local() = default;
+    ~Task_Away() = default;
 
     // 禁止拷贝
-    Task_Local(const Task_Local&) = delete;
-    Task_Local& operator=(const Task_Local&) = delete;
+    Task_Away(const Task_Away&) = delete;
+    Task_Away& operator=(const Task_Away&) = delete;
 
     // 协程操作接口 - 转发到内部协程
     bool done() const noexcept
