@@ -180,7 +180,8 @@ Task<void, void> HttpServer::start()
         //     std::string_view tp = each.second.read_line();
         //     if (tp != "")
         //     {
-        //         std::cout << "fd: " << each.second.handle.context.get()->fd << " context: " << tp;
+        //         std::cout << "fd: " << each.second.handle.context.get()->fd << " context: " <<
+        //         tp;
         //     }
         //     else if (tp == "\r\n")
         //     {
@@ -216,6 +217,7 @@ int HttpFile::eventGo()
 
 HttpFile::HttpFile(int fd) : socketfile(fd)
 {
+    corutine = eventloop();
 }
 
 Task<void, void> HttpFile::eventloop()
@@ -251,6 +253,7 @@ int HttpFiles::eventGo()
 {
     for (auto& file : fileMap)
     {
+        std::cout << "httpfilethis: " << &file << '\n';
         file.second.eventGo();
     }
     return 0;

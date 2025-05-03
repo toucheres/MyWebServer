@@ -12,16 +12,18 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
-
-class HttpFile : co_async
+class HttpFiles;
+class HttpFile : public co_async
 {
+    friend HttpFiles;
     SocketFile socketfile;
     std::map<std::string_view, std::string_view> content;
-public:
+
+  public:
     int eventGo() override;
     HttpFile(int fd);
     Task<void, void> eventloop();
-    Task<void, void> corutine = eventloop();
+    Task<void, void> corutine;
 };
 struct HttpFiles : public co_async
 {
