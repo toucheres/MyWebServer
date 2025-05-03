@@ -175,19 +175,6 @@ Task<void, void> HttpServer::start()
         {
             this->sockets.add(connfd);
         }
-        // for (auto& each : sockets.getMap())
-        // {
-        //     std::string_view tp = each.second.read_line();
-        //     if (tp != "")
-        //     {
-        //         std::cout << "fd: " << each.second.handle.context.get()->fd << " context: " <<
-        //         tp;
-        //     }
-        //     else if (tp == "\r\n")
-        //     {
-        //         // get完成或post头完成
-        //     }
-        // }
         co_yield {};
     }
     close(server_fd);
@@ -229,13 +216,6 @@ Task<void, void> HttpFile::eventloop()
         if (tp != "")
         {
             std::cout << "fd: " << socketfile.handle.context.get()->fd << " context: " << tp;
-        }
-        else if (tp == "\r\n")
-        {
-            // get完成或post头完成
-        }
-        else
-        {
             size_t index = tp.find_first_of(": ");
             std::string_view key = tp.substr(0, index);
             std::string_view val = tp.substr(index + 2, tp.length() - 2);
@@ -245,6 +225,10 @@ Task<void, void> HttpFile::eventloop()
                 std::cout << it->first << "__" << it->second << '\n';
             }
         }
+        else if (tp == "\r\n")
+        {
+            // get完成或post头完成
+        }
         co_yield {};
     }
     co_return;
@@ -253,7 +237,7 @@ int HttpFiles::eventGo()
 {
     for (auto& file : fileMap)
     {
-        std::cout << "httpfilethis: " << &file << '\n';
+        // std::cout << "httpfilethis: " << &file << '\n';
         file.second.eventGo();
     }
     return 0;
