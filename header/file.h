@@ -31,12 +31,14 @@ struct SocketFile : public co_async
   private:
     class CONTEXT
     {
-    public:
+      public:
         friend SocketFile;
-        int fd=-1;
-        std::vector<char> content={};
+        int fd = -1;
+        std::vector<char> content = {};
         mutable size_t left = 0;
         mutable size_t right = 0;
+        int fd_state = OK;
+
     };
     static Task<> eventfun(std::shared_ptr<CONTEXT> context);
 
@@ -50,9 +52,15 @@ struct SocketFile : public co_async
     bool load(int a_fd);
     SocketFile(int a_fd);
     ~SocketFile();
-    SocketFile()=default;
+    SocketFile() = default;
     SocketFile(SocketFile&& move);
-    SocketFile& operator=(SocketFile && move);
+    SocketFile& operator=(SocketFile&& move);
+    enum fd_state
+    {
+        UNKOWN = -1,
+        OK = 0,
+        WRONG = 1,
+    };
     // SocketFile(const SocketFile& copy);
 };
 struct LocalFiles

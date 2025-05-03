@@ -1,8 +1,10 @@
 #pragma once
+#include <chrono>
 #include <coroutine>
 #include <cstddef>
 #include <exception>
 #include <memory>
+#include <thread>
 #include <variant>
 #include <vector>
 class co_async
@@ -768,4 +770,41 @@ class Co_Manager
         }
         return true;
     }
+};
+class Co_Start_Manager
+{
+  public:
+    std::chrono::nanoseconds loopTime{1000000}; // 默认1毫秒
+    Co_Manager manager;
+    // 设置循环间隔
+    template <typename Rep, typename Period>
+    void setLoopInterval(const std::chrono::duration<Rep, Period>& interval)
+    {
+        loopTime = std::chrono::duration_cast<std::chrono::nanoseconds>(interval);
+    }
+
+    int start()
+    {
+        auto now = std::chrono::system_clock::now();
+        auto end = std::chrono::system_clock::now();
+
+        while (true)
+        {
+            now = std::chrono::system_clock::now();
+            manager.go();
+            end = std::chrono::system_clock::now();
+            std::this_thread::sleep_for(loopTime - (end - now));
+        }
+    }
+    static Co_Start_Manager& getInstance()
+    {
+        static auto instance = Co_Start_Manager{};
+        return instance;
+    }
+    private:
+      Co_Start_Manager() = default;
+      Co_Start_Manager(Co_Start_Manager&&) = delete;
+      Co_Start_Manager(const Co_Start_Manager&) = delete;
+      Co_Start_Manager& operator=(Co_Start_Manager&&) = delete;
+      Co_Start_Manager& operator=(const Co_Start_Manager&) = delete;
 };

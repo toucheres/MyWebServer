@@ -1,10 +1,11 @@
 #include <corutine.hpp>
 #include <file.h>
 #include <http.h>
-#include <iostream>
 int main()
 {
+    auto& coManager = Co_Start_Manager::getInstance();
     auto httpServer = HttpServer{};
-    httpServer.start();
+    coManager.manager.add(httpServer);
+    coManager.start();
     return 0;
 }

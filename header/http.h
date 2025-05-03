@@ -28,6 +28,8 @@ class HttpServer:public co_async
     bool listenSocket(int server_fd, size_t listenLenth = 5);
     int AcceptSocket(int server_fd, struct sockaddr* client_addr, socklen_t* client_addr_len);
     bool setReuseAddr(int& fd);
+    Task<void, void> start();
+    Task<void, void> handle = start();
     std::string processRequest(const std::string& request);
     std::map<std::string, std::function<void()>> callbacks;
     std::map<std::string, std::function<void(std::string)>> callbacks_format;
@@ -35,7 +37,6 @@ class HttpServer:public co_async
   public:
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
-    bool start();
     bool stop();
     void addCallback(std::pair<std::string, std::function<void()>> callback);
     void addCallbackFormat(std::pair<std::string, std::function<void(std::string)>> callback);

@@ -117,6 +117,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         else if (n == 0)
         {
             // EOF 文件结束
+            context->fd_state = WRONG;
             co_yield {};
         }
         else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
@@ -127,6 +128,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         else
         {
             // 读取错误
+            context->fd_state = WRONG;
             std::cerr << "Socket read error: " << strerror(errno) << "fd: " << context->fd
                       << std::endl;
         }

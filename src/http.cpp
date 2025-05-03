@@ -2,11 +2,11 @@
 #include <errno.h>
 #include <iostream>
 #include <string_view>
-#include <thread>
 #include <unistd.h>
 
 int HttpServer::eventGo()
 {
+    handle.resume();
     return 0;
 }
 int HttpServer::makeSocket()
@@ -153,13 +153,13 @@ bool HttpServer::setReuseAddr(int& fd)
     return true;
 }
 
-bool HttpServer::start()
+Task<void,void> HttpServer::start()
 {
     sockaddr client;
     size_t size_client = sizeof(client);
     while (1)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        //std::this_thread::sleep_for(std::chrono::milliseconds(100));
         manager.go();
         int connfd = AcceptSocket(server_fd, &client, (socklen_t*)(&size_client));
         if (connfd == -2)
@@ -182,9 +182,10 @@ bool HttpServer::start()
                 std::cout << "fd: " << each.second.handle.context.get()->fd<<" context: "<<tp;
             }
         }
+        co_yield {};
     }
     close(server_fd);
-    return 0;
+    co_return;
 }
 
 bool HttpServer::stop()
