@@ -7,7 +7,7 @@ int main()
     auto& coManager = Co_Start_Manager::getInstance();
     auto httpServer = HttpServer{};
     coManager.manager.add(httpServer);
-    coManager.loopTime = std::chrono::nanoseconds(100000000);
+    coManager.loopTime = std::chrono::nanoseconds(0);
     coManager.start();
     return 0;
 }

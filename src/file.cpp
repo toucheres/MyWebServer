@@ -131,6 +131,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
             context->fd_state = WRONG;
             std::cerr << "Socket read error: " << strerror(errno) << "fd: " << context->fd
                       << std::endl;
+            co_yield {};
         }
 
         co_yield {};
@@ -139,7 +140,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
 
 int SocketFile::eventGo()
 {
-    if (handle.context->fd_state == WRONG)
+    if (!handle.context || handle.context->fd_state == WRONG)
     {
         return -1;
     }

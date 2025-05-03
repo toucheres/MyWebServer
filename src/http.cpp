@@ -191,7 +191,6 @@ Task<void, void> HttpFile::eventloop()
             co_yield {};
         }
 
-        std::string_view tp = socketfile.read_line();
 
         // 检查连接状态
         if (socketfile.handle.context && socketfile.handle.context->fd_state == SocketFile::WRONG)
@@ -200,16 +199,15 @@ Task<void, void> HttpFile::eventloop()
             std::cout << "连接已关闭: " << socketfile.handle.context->fd << std::endl;
             break;
         }
-
-        if (tp.empty())
-        {
-            co_yield {};
-            continue;
-        }
-
+        std::string_view tp = socketfile.read_line();
         switch (state)
         {
         case REQUEST_LINE:
+            if (tp.empty())
+            {
+                co_yield {};
+                continue;
+            }
             if (!tp.empty())
             {
                 std::cout << "fd: " << socketfile.handle.context.get()->fd << " 请求行: " << tp;
@@ -236,6 +234,11 @@ Task<void, void> HttpFile::eventloop()
             break;
 
         case HEADERS:
+            if (tp.empty())
+            {
+                co_yield {};
+                continue;
+            }
             if (tp == "\r\n")
             {
                 // 空行，表示头部结束
@@ -294,6 +297,11 @@ Task<void, void> HttpFile::eventloop()
             break;
 
         case BODY:
+            if (tp.empty())
+            {
+                co_yield {};
+                continue;
+            }
             // 处理POST请求体
             if (body_read < content_length)
             {
@@ -316,15 +324,25 @@ Task<void, void> HttpFile::eventloop()
                                        "Content-Type: text/plain\r\n"
                                        "Connection: close\r\n"
                                        "\r\n"
-                                       "Hello from MyWebServer!";
+                                       "Hello from MyWebServer!\r\n";
 
-                write(socketfile.handle.context->fd, response, strlen(response));
+                // 检查连接状态后再写入
+                if (socketfile.handle.context &&
+                    socketfile.handle.context->fd_state != SocketFile::WRONG)
+                {
+                    write(socketfile.handle.context->fd, response, strlen(response));
 
-                // 输出解析结果
-                std::cout << "Request parsed: " << method << " " << path << "\n";
-                std::cout << "Headers count: " << content.size() << "\n";
+                    // 输出解析结果
+                    std::cout << "Request parsed: " << method << " " << path << "\n";
+                    std::cout << "Headers count: " << content.size() << "\n";
 
-                // 重置解析状态，准备下一个请求
+                    // 关闭连接并更新状态
+                    close(socketfile.handle.context->fd);
+                    std::cout << "连接已主动关闭: " << socketfile.handle.context->fd << std::endl;
+                    socketfile.handle.context->fd_state = SocketFile::WRONG;
+                }
+
+                // 重置解析状态
                 content.clear();
                 state = REQUEST_LINE;
                 method.clear();
@@ -333,6 +351,9 @@ Task<void, void> HttpFile::eventloop()
                 content_length = 0;
                 body_read = 0;
                 body_buffer.clear();
+
+                // 通知系统该连接已结束处理
+                httpState = -1;
             }
             break;
         }
@@ -380,9 +401,3 @@ const std::unordered_map<int, HttpFile>& HttpFiles::getMap()
 {
     return fileMap;
 }
-// Sec-Fetch-Site: none
-// Sec-Fetch-Mode: navigate
-// Sec-Fetch-User: ?1
-// Sec-Fetch-Dest: document
-// Accept-Encoding: gzip, deflate, br, zstd
-// Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6
