@@ -37,7 +37,6 @@ class HttpServer:public co_async
     ~HttpServer();
     bool start();
     bool stop();
-    void run();
     void addCallback(std::pair<std::string, std::function<void()>> callback);
     void addCallbackFormat(std::pair<std::string, std::function<void(std::string)>> callback);
     void handleClient(int client_fd);

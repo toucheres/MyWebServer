@@ -5,7 +5,11 @@
 #include <memory>
 #include <variant>
 #include <vector>
-
+class co_async
+{
+  public:
+    virtual int eventGo() = 0;
+};
 // 泛型协程任务，可以返回任意类型T的值
 template <typename RET = void, typename YIELD = void> class Task
 {
@@ -577,23 +581,68 @@ template <class CONTEXT = void> class Task_Local : public CONTEXT
 {
   public:
     virtual Task<> co_fun() = 0;
-    Task<> handle = nullptr;
+    Task<void, void> handle = nullptr;
+
+    // 默认构造函数
+    Task_Local() noexcept = default;
+
+    // 移动构造
+    Task_Local(Task_Local&& other) = delete;
+
+    // 移动赋值
+    Task_Local& operator=(Task_Local&& other) = delete;
+
+    // nullptr赋值
+    Task_Local& operator=(std::nullptr_t) noexcept
+    {
+        handle = nullptr;
+        return *this;
+    }
+
+    // bool操作符
+    operator bool()
+    {
+        return (bool)handle;
+    }
+
+    // 禁止拷贝
+    Task_Local(const Task_Local&) = delete;
+    Task_Local& operator=(const Task_Local&) = delete;
+
+    // 协程操作接口
+    bool done() const noexcept
+    {
+        return (!(bool)handle) || handle.done();
+    }
+
     void resume()
     {
         if (!handle)
         {
             handle = co_fun();
         }
-        return handle.resume();
+        handle.resume();
+    }
+
+    void get_result()
+    {
+        if (handle)
+        {
+            handle.get_result();
+        }
+    }
+
+    // 检查是否是yield状态
+    bool is_yield() const noexcept
+    {
+        if (!(bool)handle)
+            return false;
+        return handle.is_yield();
     }
 };
 template <class CONTEXT> class Task_Away
 {
   public:
-    // struct Context
-    // {
-    //     int data = 0;
-    // };
     std::shared_ptr<CONTEXT> context;
     Task<void, void> corutine;
 
@@ -607,6 +656,12 @@ template <class CONTEXT> class Task_Away
     template <typename Func> Task_Away(Func&& func) noexcept
     {
         context = std::make_shared<CONTEXT>();
+        corutine = func(context);
+    }
+
+    template <typename Func> Task_Away(std::shared_ptr<CONTEXT> p) noexcept
+    {
+        context = p;
         corutine = func(context);
     }
 
@@ -676,11 +731,7 @@ template <class CONTEXT> class Task_Away
         return context;
     }
 };
-class co_async
-{
-  public:
-    virtual int eventGo() = 0;
-};
+
 class Co_Manager
 {
     std::vector<co_async*> tasks;

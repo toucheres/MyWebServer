@@ -97,7 +97,6 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         {
             context->content.resize(context->content.size() * 2);
         }
-
         // 异步读取数据
         int flags = fcntl(context->fd, F_GETFL, 0);
         if (flags == -1)

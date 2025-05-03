@@ -192,11 +192,6 @@ bool HttpServer::stop()
     return true;
 }
 
-// run(), processRequest()和handleClient()的实现还需要补充
-void HttpServer::run()
-{
-    // 待实现
-}
 
 std::string HttpServer::processRequest(const std::string& request)
 {
