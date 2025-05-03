@@ -1,4 +1,5 @@
 #include "http.h"
+#include "file.h"
 #include <errno.h>
 #include <iostream>
 #include <string_view>
@@ -153,13 +154,13 @@ bool HttpServer::setReuseAddr(int& fd)
     return true;
 }
 
-Task<void,void> HttpServer::start()
+Task<void, void> HttpServer::start()
 {
     sockaddr client;
     size_t size_client = sizeof(client);
     while (1)
     {
-        //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
         manager.go();
         int connfd = AcceptSocket(server_fd, &client, (socklen_t*)(&size_client));
         if (connfd == -2)
@@ -174,14 +175,18 @@ Task<void,void> HttpServer::start()
         {
             this->sockets.add(connfd);
         }
-        for (auto& each : sockets.getMap())
-        {
-            std::string_view tp = each.second.read_line();
-            if (tp!="")
-            {
-                std::cout << "fd: " << each.second.handle.context.get()->fd<<" context: "<<tp;
-            }
-        }
+        // for (auto& each : sockets.getMap())
+        // {
+        //     std::string_view tp = each.second.read_line();
+        //     if (tp != "")
+        //     {
+        //         std::cout << "fd: " << each.second.handle.context.get()->fd << " context: " << tp;
+        //     }
+        //     else if (tp == "\r\n")
+        //     {
+        //         // get完成或post头完成
+        //     }
+        // }
         co_yield {};
     }
     close(server_fd);
@@ -193,7 +198,6 @@ bool HttpServer::stop()
     return true;
 }
 
-
 std::string HttpServer::processRequest(const std::string& request)
 {
     // 待实现
@@ -204,35 +208,72 @@ void HttpServer::handleClient(int client_fd)
 {
     // 待实现
 }
-// GET / HTTP/1.1
-// Host: localhost:8080
-// Connection: keep-alive
-// sec-ch-ua: "Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
-// sec-ch-ua-mobile: ?0
-// sec-ch-ua-platform: "Windows"
-// Upgrade-Insecure-Requests: 1
-// User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)
-// Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0 Accept:
-// text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
-// Sec-Fetch-Site: none
-// Sec-Fetch-Mode: navigate
-// Sec-Fetch-User: ?1
-// Sec-Fetch-Dest: document
-// Accept-Encoding: gzip, deflate, br, zstd
-// Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6
+int HttpFile::eventGo()
+{
+    corutine.resume();
+    return 0;
+}
 
-// GET / HTTP/1.1
-// Host: localhost:8080
-// Connection: keep-alive
-// Cache-Control: max-age=0
-// sec-ch-ua: "Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"
-// sec-ch-ua-mobile: ?0
-// sec-ch-ua-platform: "Windows"
-// Upgrade-Insecure-Requests: 1
-// User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)
-// Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0 Accept:
-// text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
-// Sec-Fetch-Site: cross-site
+HttpFile::HttpFile(int fd) : socketfile(fd)
+{
+}
+
+Task<void, void> HttpFile::eventloop()
+{
+    while (1)
+    {
+        socketfile.eventGo();
+        std::string_view tp = socketfile.read_line();
+        if (tp != "")
+        {
+            std::cout << "fd: " << socketfile.handle.context.get()->fd << " context: " << tp;
+        }
+        else if (tp == "\r\n")
+        {
+            // get完成或post头完成
+        }
+        else
+        {
+            size_t index = tp.find_first_of(": ");
+            std::string_view key = tp.substr(0, index);
+            std::string_view val = tp.substr(index + 2, tp.length() - 2);
+            auto [it, inserted] = content.try_emplace(key, val);
+            if (inserted)
+            {
+                std::cout << it->first << "__" << it->second << '\n';
+            }
+        }
+        co_yield {};
+    }
+    co_return;
+}
+int HttpFiles::eventGo()
+{
+    for (auto& file : fileMap)
+    {
+        file.second.eventGo();
+    }
+    return 0;
+}
+bool HttpFiles::add(int fd)
+{
+    auto [it, inserted] = this->fileMap.try_emplace(fd, fd);
+    if (!inserted)
+    {
+        it->second = fd; // 或更新现有值
+        return false;
+    }
+    return true;
+}
+HttpFile& HttpFiles::get(int fd)
+{
+    return fileMap.at(fd);
+}
+const std::unordered_map<int, HttpFile>& HttpFiles::getMap()
+{
+    return fileMap;
+}
+// Sec-Fetch-Site: none
 // Sec-Fetch-Mode: navigate
 // Sec-Fetch-User: ?1
 // Sec-Fetch-Dest: document

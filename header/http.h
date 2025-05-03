@@ -6,12 +6,36 @@
 #include <map>
 #include <netinet/in.h>
 #include <string>
+#include <string_view>
 #include <sys/fcntl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <unordered_map>
 
-class HttpServer:public co_async
+class HttpFile : co_async
+{
+    SocketFile socketfile;
+    std::map<std::string_view, std::string_view> content;
+public:
+    int eventGo() override;
+    HttpFile(int fd);
+    Task<void, void> eventloop();
+    Task<void, void> corutine = eventloop();
+};
+struct HttpFiles : public co_async
+{
+  private:
+    std::unordered_map<int, HttpFile> fileMap;
+
+  public:
+    virtual int eventGo() override;
+    bool add(int fd);
+    HttpFile& get(int fd);
+    const std::unordered_map<int, HttpFile>& getMap();
+};
+
+class HttpServer : public co_async
 {
   private:
     int server_fd;
@@ -19,8 +43,8 @@ class HttpServer:public co_async
     std::string ip_listening;
     bool running;
     LocalFiles static_files;
+    HttpFiles sockets;
     Co_Manager manager;
-    SocketFiles sockets;
     // 创建套接字
     int eventGo() override;
     int makeSocket();
