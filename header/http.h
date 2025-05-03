@@ -18,12 +18,13 @@ class HttpFile : public co_async
     friend HttpFiles;
     SocketFile socketfile;
     std::map<std::string_view, std::string_view> content;
+    int httpState = true;
 
   public:
     int eventGo() override;
     HttpFile(int fd);
     Task<void, void> eventloop();
-    Task<void, void> corutine;
+    Task<void, void> corutine = eventloop();
 };
 struct HttpFiles : public co_async
 {
