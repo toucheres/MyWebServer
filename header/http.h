@@ -13,12 +13,40 @@
 #include <unistd.h>
 #include <unordered_map>
 class HttpFiles;
+class HttpFile;
+class HttpServer;
+class HttpAPI
+{
+    LocalFiles& static_files;
+    HttpFile& socket;
+    std::string_view getUrl();
+    std::string_view getContext(std::string_view key);
+    void write(std::string_view context);
+    HttpAPI(LocalFiles& files, HttpFile& in);
+};
 class HttpFile : public co_async
 {
     friend HttpFiles;
+    friend HttpAPI; // 修改为正确引用嵌套类
     SocketFile socketfile;
     std::map<std::string_view, std::string_view> content;
     int httpState = true;
+    void reset();
+    enum ParseState
+    {
+        REQUEST_LINE,
+        HEADERS,
+        BODY,
+        COMPLETE
+    };
+    ParseState state = REQUEST_LINE;
+
+    std::string method;
+    std::string path;
+    std::string version;
+    size_t content_length = 0;
+    size_t body_read = 0;
+    std::string body_buffer;
 
   public:
     int eventGo() override;
@@ -46,9 +74,9 @@ class HttpServer : public co_async
     uint16_t port;
     std::string ip_listening;
     bool running;
-    LocalFiles static_files;
     HttpFiles sockets;
     Co_Manager manager;
+    //std::unordered_map<std::string, HttpAPI> callback;
     // 创建套接字
     int eventGo() override;
     int makeSocket();
@@ -59,14 +87,14 @@ class HttpServer : public co_async
     Task<void, void> start();
     Task<void, void> handle = start();
     std::string processRequest(const std::string& request);
-    std::map<std::string, std::function<void()>> callbacks;
-    std::map<std::string, std::function<void(std::string)>> callbacks_format;
+    std::map<std::string, std::function<void(HttpAPI)>> callbacks;
+    std::map<std::string, std::function<void(HttpAPI)>> callbacks_format;
 
   public:
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
     bool stop();
-    void addCallback(std::pair<std::string, std::function<void()>> callback);
-    void addCallbackFormat(std::pair<std::string, std::function<void(std::string)>> callback);
+    void addCallback(std::string path, std::function<void(HttpAPI)> callback);
+    void addCallbackFormat(std::string format, std::function<void(HttpAPI)> callback);
     void handleClient(int client_fd);
 };

@@ -144,6 +144,11 @@ bool HttpServer::stop()
     return true;
 }
 
+void HttpServer::addCallback(std::string path, std::function<void(HttpAPI)> callback)
+{
+    callbacks.insert_or_assign(path,callback);
+}
+
 std::string HttpServer::processRequest(const std::string& request)
 {
     // 待实现
@@ -168,7 +173,8 @@ int HttpFile::handle()
 {
     const char* response = "HTTP/1.1 200 OK\r\n"
                            "Content-Type: text/plain\r\n"
-                           "Connection: close\r\n"
+                           "Content-Length: 24\r\n" // 明确指定内容长度
+                           "Connection: keep-alive\r\n"
                            "\r\n"
                            "Hello from MyWebServer!\r\n";
 
@@ -179,31 +185,27 @@ int HttpFile::handle()
     std::cout << "Headers count: " << content.size() << "\n";
 
     // 关闭连接并更新状态
-    close(socketfile.handle.context->fd);
-    std::cout << "连接已主动关闭: " << socketfile.handle.context->fd << std::endl;
-    socketfile.handle.context->fd_state = SocketFile::WRONG;
+    // [ERROR]write异步，不能关
+    // close(socketfile.handle.context->fd);
+    // std::cout << "连接已主动关闭: " << socketfile.handle.context->fd << std::endl;
+    // socketfile.handle.context->fd_state = SocketFile::WRONG;
 
     return 0;
 }
-
+void HttpFile::reset()
+{
+    // 重置解析状态
+    content.clear();
+    state = REQUEST_LINE;
+    method.clear();
+    path.clear();
+    version.clear();
+    content_length = 0;
+    body_read = 0;
+    body_buffer.clear();
+}
 Task<void, void> HttpFile::eventloop()
 {
-    enum ParseState
-    {
-        REQUEST_LINE,
-        HEADERS,
-        BODY,
-        COMPLETE
-    };
-    ParseState state = REQUEST_LINE;
-
-    std::string method;
-    std::string path;
-    std::string version;
-    size_t content_length = 0;
-    size_t body_read = 0;
-    std::string body_buffer;
-
     while (1)
     {
         int ret = socketfile.eventGo();
@@ -346,19 +348,11 @@ Task<void, void> HttpFile::eventloop()
                     socketfile.handle.context->fd_state != SocketFile::WRONG)
                 {
                     handle();
+                    state = REQUEST_LINE;
                 }
-                // 重置解析状态
-                content.clear();
-                state = REQUEST_LINE;
-                method.clear();
-                path.clear();
-                version.clear();
-                content_length = 0;
-                body_read = 0;
-                body_buffer.clear();
 
-                // 通知系统该连接已结束处理
-                httpState = -1;
+                // // 通知系统该连接已结束处理
+                // httpState = -1;
             }
             break;
         }
@@ -405,4 +399,28 @@ HttpFile& HttpFiles::get(int fd)
 const std::unordered_map<int, HttpFile>& HttpFiles::getMap()
 {
     return fileMap;
+}
+std::string_view HttpAPI::getUrl()
+{
+    auto it = this->socket.content.find("path");
+    if (it == socket.content.end()) {
+        return ""; // Key doesn't exist
+    }
+    return it->second;
+}
+std::string_view HttpAPI::getContext(std::string_view key)
+{
+    auto it = this->socket.content.find(key);
+    if (it == socket.content.end())
+    {
+        return ""; // Key doesn't exist
+    }
+    return it->second;
+}
+void HttpAPI::write(std::string_view context)
+{
+    socket.socketfile.writeFile(context);
+}
+HttpAPI::HttpAPI(LocalFiles& fils, HttpFile& in) : static_files(fils), socket(in)
+{
 }

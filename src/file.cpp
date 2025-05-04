@@ -12,7 +12,7 @@
 // LocalFile实现
 LocalFile::LocalFile(std::string a_path) : path(std::move(a_path)), size(0)
 {
-    // 构造函数初始化路径，不加载内容
+    load(path);
 }
 
 LocalFile::LocalFile(LocalFile&& move)
@@ -128,9 +128,17 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         else
         {
             // 读取错误
+            if (errno == ECONNRESET || errno == EPIPE || errno == ECONNABORTED)
+            {
+                std::cerr << "客户端断开连接: " << strerror(errno) << ", fd: " << context->fd
+                          << std::endl;
+            }
+            else
+            {
+                std::cerr << "Socket read error: " << strerror(errno) << ", fd: " << context->fd
+                          << std::endl;
+            }
             context->fd_state = WRONG;
-            std::cerr << "Socket read error: " << strerror(errno) << "fd: " << context->fd
-                      << std::endl;
             co_yield {};
         }
         // 写数据
@@ -167,6 +175,10 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                 std::cerr << "连接已关闭" << std::endl;
                 context->fd_state = WRONG;
                 break;
+            }
+            else
+            {
+                context->w_left += written;
             }
         }
         co_yield {};
@@ -240,7 +252,7 @@ const void SocketFile::writeFile(std::string_view file)
 {
     handle.context->waitingWrite = file;
     handle.context->w_left = 0;
-    handle.context->w_right = 0;
+    handle.context->w_right = file.length();
     return;
 }
 

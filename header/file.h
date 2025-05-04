@@ -21,7 +21,7 @@ struct LocalFile
   public:
     bool load(std::string& path);
     std::string_view read();
-    std::string_view wirte();
+    // std::string_view wirte();
     LocalFile(std::string a_path);
     LocalFile(LocalFile&& move);
 };
