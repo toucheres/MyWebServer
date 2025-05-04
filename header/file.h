@@ -21,6 +21,7 @@ struct LocalFile
   public:
     bool load(std::string& path);
     std::string_view read();
+    std::string_view wirte();
     LocalFile(std::string a_path);
     LocalFile(LocalFile&& move);
 };
@@ -35,8 +36,11 @@ struct SocketFile : public co_async
         friend SocketFile;
         int fd = -1;
         std::vector<char> content = {};
-        mutable size_t left = 0;
-        mutable size_t right = 0;
+        mutable size_t r_left = 0;
+        mutable size_t r_right = 0;
+        std::string_view waitingWrite = {};
+        mutable size_t w_left = 0;
+        mutable size_t w_right = 0;
         int fd_state = OK;
 
     };
@@ -48,6 +52,7 @@ struct SocketFile : public co_async
     const std::string_view read_added() const;
     const std::string_view read_line() const;
     const std::string_view read_all() const;
+    const void writeFile(std::string_view file);
     bool setNonBlocking();
     bool load(int a_fd);
     SocketFile(int a_fd);

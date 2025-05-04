@@ -82,8 +82,8 @@ SocketFile& SocketFile::operator=(SocketFile&& move)
 bool SocketFile::load(int a_fd)
 {
     handle.get_context()->fd = a_fd;
-    handle.get_context()->left = 0;
-    handle.get_context()->right = 0;
+    handle.get_context()->r_left = 0;
+    handle.get_context()->r_right = 0;
     handle.get_context()->content.resize(4096); // 预分配缓冲区
     return true;
 }
@@ -93,7 +93,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
     while (true)
     {
         // 检查缓冲区是否需要扩容
-        if (context->right >= context->content.size())
+        if (context->r_right >= context->content.size())
         {
             context->content.resize(context->content.size() * 2);
         }
@@ -107,12 +107,12 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         {
             std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
         }
-        ssize_t n = read(context->fd, context->content.data() + context->right,
-                         context->content.size() - context->right);
+        ssize_t n = read(context->fd, context->content.data() + context->r_right,
+                         context->content.size() - context->r_right);
 
         if (n > 0)
         {
-            context->right += n;
+            context->r_right += n;
         }
         else if (n == 0)
         {
@@ -123,7 +123,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
         {
             // 暂无数据可读，暂停协程
-            co_yield {};
+            // co_yield {};
         }
         else
         {
@@ -133,7 +133,42 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                       << std::endl;
             co_yield {};
         }
-
+        // 写数据
+        if (context->w_right > context->w_left)
+        {
+            int written = ::write(context->fd, &context->waitingWrite[context->w_left],
+                                  context->w_right - context->w_left);
+            if (written == -1)
+            {
+                // 处理写入错误
+                if (errno == EINTR)
+                {
+                    // 被信号中断，继续尝试
+                    continue;
+                }
+                else if (errno == EAGAIN || errno == EWOULDBLOCK)
+                {
+                    // 非阻塞模式下缓冲区已满，可以稍后重试
+                    // 在协程环境中，应该yield后继续
+                    // co_yield {};
+                    // continue;
+                }
+                else
+                {
+                    // 其他错误（连接关闭等）
+                    std::cerr << "写入失败: " << strerror(errno) << std::endl;
+                    context->fd_state = WRONG;
+                    break;
+                }
+            }
+            else if (written == 0)
+            {
+                // 连接已关闭
+                std::cerr << "连接已关闭" << std::endl;
+                context->fd_state = WRONG;
+                break;
+            }
+        }
         co_yield {};
     }
 }
@@ -150,29 +185,29 @@ int SocketFile::eventGo()
 
 const std::string_view SocketFile::read_added() const
 {
-    if (handle.get_context()->left >= handle.get_context()->right)
+    if (handle.get_context()->r_left >= handle.get_context()->r_right)
     {
         return std::string_view();
     }
 
-    std::string_view result(handle.get_context()->content.data() + handle.get_context()->left,
-                            handle.get_context()->right - handle.get_context()->left);
-    handle.get_context()->left = handle.get_context()->right;
+    std::string_view result(handle.get_context()->content.data() + handle.get_context()->r_left,
+                            handle.get_context()->r_right - handle.get_context()->r_left);
+    handle.get_context()->r_left = handle.get_context()->r_right;
     return result;
 }
 
 const std::string_view SocketFile::read_line() const
 {
-    size_t& left = this->handle.get_context()->left;
-    size_t& right = this->handle.get_context()->right;
-    if (right - left <= 1)
+    size_t& r_left = this->handle.get_context()->r_left;
+    size_t& r_right = this->handle.get_context()->r_right;
+    if (r_right - r_left <= 1)
     {
         return std::string_view{""};
     }
     else
     {
         int fiannl = -1;
-        for (size_t i = left; i <= right - 1; i++)
+        for (size_t i = r_left; i <= r_right - 1; i++)
         {
             if (this->handle.get_context()->content[i] == '\r' &&
                 this->handle.get_context()->content[i + 1] == '\n')
@@ -184,9 +219,9 @@ const std::string_view SocketFile::read_line() const
         if (fiannl != -1)
         {
             auto tp = std::string_view(
-                &this->handle.get_context()->content[this->handle.get_context()->left],
-                fiannl - left + 1);
-            left = fiannl + 1;
+                &this->handle.get_context()->content[this->handle.get_context()->r_left],
+                fiannl - r_left + 1);
+            r_left = fiannl + 1;
             return tp;
         }
         else
@@ -198,7 +233,15 @@ const std::string_view SocketFile::read_line() const
 
 const std::string_view SocketFile::read_all() const
 {
-    return std::string_view(handle.get_context()->content.data(), handle.get_context()->right);
+    return std::string_view(handle.get_context()->content.data(), handle.get_context()->r_right);
+}
+
+const void SocketFile::writeFile(std::string_view file)
+{
+    handle.context->waitingWrite = file;
+    handle.context->w_left = 0;
+    handle.context->w_right = 0;
+    return;
 }
 
 bool SocketFile::setNonBlocking()
@@ -251,9 +294,9 @@ const std::unordered_map<int, SocketFile>& SocketFiles::getMap()
 }
 int SocketFiles::eventGo()
 {
-    for (auto it = fileMap.begin(); it != fileMap.end(); )
+    for (auto it = fileMap.begin(); it != fileMap.end();)
     {
-        if(it->second.eventGo()==-1)
+        if (it->second.eventGo() == -1)
         {
             close(it->second.handle.context->fd);
             it = fileMap.erase(it);

@@ -97,6 +97,7 @@ HttpServer::HttpServer(std::string ip_listening, uint16_t port)
 HttpServer::~HttpServer()
 {
     stop();
+    close(server_fd);
 }
 
 bool HttpServer::setReuseAddr(int& fd)
@@ -135,7 +136,6 @@ Task<void, void> HttpServer::start()
         }
         co_yield {};
     }
-    close(server_fd);
     co_return;
 }
 
@@ -164,6 +164,28 @@ HttpFile::HttpFile(int fd) : socketfile(fd)
 {
 }
 
+int HttpFile::handle()
+{
+    const char* response = "HTTP/1.1 200 OK\r\n"
+                           "Content-Type: text/plain\r\n"
+                           "Connection: close\r\n"
+                           "\r\n"
+                           "Hello from MyWebServer!\r\n";
+
+    // write(socketfile.handle.context->fd, response, strlen(response));
+    this->socketfile.writeFile(response);
+    // 输出解析结果
+    // std::cout << "Request parsed: " << method << " " << path << "\n";
+    std::cout << "Headers count: " << content.size() << "\n";
+
+    // 关闭连接并更新状态
+    close(socketfile.handle.context->fd);
+    std::cout << "连接已主动关闭: " << socketfile.handle.context->fd << std::endl;
+    socketfile.handle.context->fd_state = SocketFile::WRONG;
+
+    return 0;
+}
+
 Task<void, void> HttpFile::eventloop()
 {
     enum ParseState
@@ -190,7 +212,6 @@ Task<void, void> HttpFile::eventloop()
             this->httpState = false;
             co_yield {};
         }
-
 
         // 检查连接状态
         if (socketfile.handle.context && socketfile.handle.context->fd_state == SocketFile::WRONG)
@@ -320,28 +341,12 @@ Task<void, void> HttpFile::eventloop()
         case COMPLETE:
             // 请求处理完成，发送响应
             {
-                const char* response = "HTTP/1.1 200 OK\r\n"
-                                       "Content-Type: text/plain\r\n"
-                                       "Connection: close\r\n"
-                                       "\r\n"
-                                       "Hello from MyWebServer!\r\n";
-
                 // 检查连接状态后再写入
                 if (socketfile.handle.context &&
                     socketfile.handle.context->fd_state != SocketFile::WRONG)
                 {
-                    write(socketfile.handle.context->fd, response, strlen(response));
-
-                    // 输出解析结果
-                    std::cout << "Request parsed: " << method << " " << path << "\n";
-                    std::cout << "Headers count: " << content.size() << "\n";
-
-                    // 关闭连接并更新状态
-                    close(socketfile.handle.context->fd);
-                    std::cout << "连接已主动关闭: " << socketfile.handle.context->fd << std::endl;
-                    socketfile.handle.context->fd_state = SocketFile::WRONG;
+                    handle();
                 }
-
                 // 重置解析状态
                 content.clear();
                 state = REQUEST_LINE;
@@ -365,7 +370,7 @@ Task<void, void> HttpFile::eventloop()
 int HttpFiles::eventGo()
 {
     std::vector<int> toRemove; // Store keys of elements to remove
-    
+
     for (auto& file : fileMap)
     {
         int ret = file.second.eventGo();
@@ -374,13 +379,13 @@ int HttpFiles::eventGo()
             toRemove.push_back(file.first); // Add key to removal list
         }
     }
-    
+
     // Remove elements with ret == -1
     for (int fd : toRemove)
     {
         fileMap.erase(fd);
     }
-    
+
     return 0;
 }
 bool HttpFiles::add(int fd)

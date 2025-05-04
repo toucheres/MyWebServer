@@ -23,6 +23,7 @@ class HttpFile : public co_async
   public:
     int eventGo() override;
     HttpFile(int fd);
+    virtual int handle();
     Task<void, void> eventloop();
     Task<void, void> corutine = eventloop();
 };
