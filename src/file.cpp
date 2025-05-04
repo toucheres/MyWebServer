@@ -90,6 +90,7 @@ bool SocketFile::load(int a_fd)
 
 Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
 {
+    // int loop = 0;
     while (true)
     {
         // 检查缓冲区是否需要扩容
@@ -109,15 +110,36 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         }
         ssize_t n = read(context->fd, context->content.data() + context->r_right,
                          context->content.size() - context->r_right);
-
+        // loop++;
+        // std::cout << "loop: " << loop << '\n';
         if (n > 0)
         {
             context->r_right += n;
         }
         else if (n == 0)
         {
-            // EOF 文件结束
-            context->fd_state = WRONG;
+            // 可能是暂时没有数据，再次确认是否真的关闭
+            std::cout << "可能的EOF,等待确认...\n";
+
+            // 添加短暂延迟
+            co_yield {};
+
+            // 再次尝试读取
+            int confirm = read(context->fd, context->content.data() + context->r_right, 1);
+            if (confirm == 0)
+            {
+                // 确认是真的EOF
+                context->fd_state = WRONG;
+                std::cout << "确认连接已关闭\n";
+            }
+            else if (confirm > 0)
+            {
+                // 还有数据，不是EOF
+                context->r_right += confirm;
+                std::cout << "误判的EOF，连接仍然活跃\n";
+            }
+            // 如果是EAGAIN，则保持连接
+
             co_yield {};
         }
         else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))

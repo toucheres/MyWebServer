@@ -146,7 +146,7 @@ bool HttpServer::stop()
 
 void HttpServer::addCallback(std::string path, std::function<void(HttpAPI)> callback)
 {
-    callbacks.insert_or_assign(path,callback);
+    callbacks.insert_or_assign(path, callback);
 }
 
 std::string HttpServer::processRequest(const std::string& request)
@@ -173,19 +173,17 @@ int HttpFile::handle()
 {
     const char* response = "HTTP/1.1 200 OK\r\n"
                            "Content-Type: text/plain\r\n"
-                           "Content-Length: 24\r\n" // 明确指定内容长度
+                           "Content-Length: 25\r\n"
                            "Connection: keep-alive\r\n"
                            "\r\n"
                            "Hello from MyWebServer!\r\n";
-
-    // write(socketfile.handle.context->fd, response, strlen(response));
     this->socketfile.writeFile(response);
     // 输出解析结果
     // std::cout << "Request parsed: " << method << " " << path << "\n";
     std::cout << "Headers count: " << content.size() << "\n";
 
     // 关闭连接并更新状态
-    // [ERROR]write异步，不能关
+    // [ERROR]writeFile异步，不能关
     // close(socketfile.handle.context->fd);
     // std::cout << "连接已主动关闭: " << socketfile.handle.context->fd << std::endl;
     // socketfile.handle.context->fd_state = SocketFile::WRONG;
@@ -211,16 +209,19 @@ Task<void, void> HttpFile::eventloop()
         int ret = socketfile.eventGo();
         if (ret == -1)
         {
-            this->httpState = false;
+            httpState = false;
             co_yield {};
         }
 
         // 检查连接状态
-        if (socketfile.handle.context && socketfile.handle.context->fd_state == SocketFile::WRONG)
+        // std::cout << (socketfile.handle.context) << '\n';
+        // std::cout << (socketfile.handle.context->fd_state == SocketFile::WRONG) << '\n';
+        if ((!socketfile.handle.context) ||
+            (socketfile.handle.context->fd_state == SocketFile::WRONG))
         {
-            httpState = -1;
+            httpState = false;
             std::cout << "连接已关闭: " << socketfile.handle.context->fd << std::endl;
-            break;
+            co_yield {};
         }
         std::string_view tp = socketfile.read_line();
         switch (state)
@@ -314,7 +315,7 @@ Task<void, void> HttpFile::eventloop()
                     }
 
                     content.try_emplace(key, val);
-                    std::cout << key << ": " << val << '\n';
+                    // std::cout << key << ": " << val << '\n';
                 }
             }
             break;
@@ -368,13 +369,12 @@ int HttpFiles::eventGo()
     for (auto& file : fileMap)
     {
         int ret = file.second.eventGo();
-        if (ret == -1)
+        if (ret == false)
         {
             toRemove.push_back(file.first); // Add key to removal list
         }
     }
 
-    // Remove elements with ret == -1
     for (int fd : toRemove)
     {
         fileMap.erase(fd);
@@ -403,7 +403,8 @@ const std::unordered_map<int, HttpFile>& HttpFiles::getMap()
 std::string_view HttpAPI::getUrl()
 {
     auto it = this->socket.content.find("path");
-    if (it == socket.content.end()) {
+    if (it == socket.content.end())
+    {
         return ""; // Key doesn't exist
     }
     return it->second;
