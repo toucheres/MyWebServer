@@ -15,19 +15,20 @@
 class HttpFiles;
 class HttpFile;
 class HttpServer;
-class HttpAPI
-{
-    LocalFiles& static_files;
-    HttpFile& socket;
-    std::string_view getUrl();
-    std::string_view getContext(std::string_view key);
-    void write(std::string_view context);
-    HttpAPI(LocalFiles& files, HttpFile& in);
-};
+// class HttpAPI
+// {
+//     LocalFiles& static_files;
+//     HttpFile& socket;
+//     std::string_view getUrl();
+//     std::string_view getContext(std::string_view key);
+//     void write(std::string_view context);
+//     HttpAPI(LocalFiles& files, HttpFile& in);
+// };
 class HttpFile : public co_async
 {
     friend HttpFiles;
-    friend HttpAPI; // 修改为正确引用嵌套类
+    friend HttpServer;
+    // friend HttpAPI; // 修改为正确引用嵌套类
     SocketFile socketfile;
     std::map<std::string_view, std::string_view> content;
     int httpState = true;
@@ -49,6 +50,7 @@ class HttpFile : public co_async
     std::string body_buffer;
 
   public:
+    std::function<void(HttpFile&)> callback;
     int eventGo() override;
     HttpFile(int fd);
     virtual int handle();
@@ -76,8 +78,8 @@ class HttpServer : public co_async
     bool running;
     HttpFiles sockets;
     Co_Manager manager;
-    //std::unordered_map<std::string, HttpAPI> callback;
-    // 创建套接字
+    // std::unordered_map<std::string, HttpAPI> callback;
+    //  创建套接字
     int eventGo() override;
     int makeSocket();
     int bindSocket(int server_fd);
@@ -87,14 +89,14 @@ class HttpServer : public co_async
     Task<void, void> start();
     Task<void, void> handle = start();
     std::string processRequest(const std::string& request);
-    std::map<std::string, std::function<void(HttpAPI)>> callbacks;
-    std::map<std::string, std::function<void(HttpAPI)>> callbacks_format;
+    std::map<std::string, std::function<void(HttpFile&)>> callbacks;
+    std::map<std::string, std::function<void(HttpFile&)>> callbacks_format;
 
   public:
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
     bool stop();
-    void addCallback(std::string path, std::function<void(HttpAPI)> callback);
-    void addCallbackFormat(std::string format, std::function<void(HttpAPI)> callback);
+    void addCallback(std::string path, std::function<void(HttpFile&)> callback);
+    void addCallbackFormat(std::string format, std::function<void(HttpFile&)> callback);
     void handleClient(int client_fd);
 };

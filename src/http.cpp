@@ -92,6 +92,16 @@ HttpServer::HttpServer(std::string ip_listening, uint16_t port)
         std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
     }
     manager.add(sockets);
+    callbacks["1"] = [](HttpFile& self)
+    {
+        const char* response = "HTTP/1.1 200 OK\r\n"
+                               "Content-Type: text/plain\r\n"
+                               "Content-Length: 25\r\n"
+                               "Connection: keep-alive\r\n"
+                               "\r\n"
+                               "Hello from MyWebServer!\r\n";
+        self.socketfile.writeFile(response);
+    };
 }
 
 HttpServer::~HttpServer()
@@ -144,9 +154,14 @@ bool HttpServer::stop()
     return true;
 }
 
-void HttpServer::addCallback(std::string path, std::function<void(HttpAPI)> callback)
+void HttpServer::addCallback(std::string path, std::function<void(HttpFile&)> callback)
 {
     callbacks.insert_or_assign(path, callback);
+}
+
+void HttpServer::addCallbackFormat(std::string format, std::function<void(HttpFile&)> callback)
+{
+    callbacks_format.insert_or_assign(format, callback);
 }
 
 std::string HttpServer::processRequest(const std::string& request)
@@ -167,17 +182,21 @@ int HttpFile::eventGo()
 
 HttpFile::HttpFile(int fd) : socketfile(fd)
 {
+    callback = [](HttpFile& self)
+    {
+        const char* response = "HTTP/1.1 200 OK\r\n"
+                               "Content-Type: text/plain\r\n"
+                               "Content-Length: 25\r\n"
+                               "Connection: keep-alive\r\n"
+                               "\r\n"
+                               "Hello from MyWebServer!\r\n";
+        self.socketfile.writeFile(response);
+    };
 }
 
 int HttpFile::handle()
 {
-    const char* response = "HTTP/1.1 200 OK\r\n"
-                           "Content-Type: text/plain\r\n"
-                           "Content-Length: 25\r\n"
-                           "Connection: keep-alive\r\n"
-                           "\r\n"
-                           "Hello from MyWebServer!\r\n";
-    this->socketfile.writeFile(response);
+    callback(*this);
     // 输出解析结果
     // std::cout << "Request parsed: " << method << " " << path << "\n";
     std::cout << "Headers count: " << content.size() << "\n";
@@ -390,6 +409,10 @@ bool HttpFiles::add(int fd)
         it->second = fd; // 或更新现有值
         return false;
     }
+    else
+    {
+        // it->second.callback = 
+    }
     return true;
 }
 HttpFile& HttpFiles::get(int fd)
@@ -400,28 +423,28 @@ const std::unordered_map<int, HttpFile>& HttpFiles::getMap()
 {
     return fileMap;
 }
-std::string_view HttpAPI::getUrl()
-{
-    auto it = this->socket.content.find("path");
-    if (it == socket.content.end())
-    {
-        return ""; // Key doesn't exist
-    }
-    return it->second;
-}
-std::string_view HttpAPI::getContext(std::string_view key)
-{
-    auto it = this->socket.content.find(key);
-    if (it == socket.content.end())
-    {
-        return ""; // Key doesn't exist
-    }
-    return it->second;
-}
-void HttpAPI::write(std::string_view context)
-{
-    socket.socketfile.writeFile(context);
-}
-HttpAPI::HttpAPI(LocalFiles& fils, HttpFile& in) : static_files(fils), socket(in)
-{
-}
+// std::string_view HttpAPI::getUrl()
+// {
+//     auto it = this->socket.content.find("path");
+//     if (it == socket.content.end())
+//     {
+//         return ""; // Key doesn't exist
+//     }
+//     return it->second;
+// }
+// std::string_view HttpAPI::getContext(std::string_view key)
+// {
+//     auto it = this->socket.content.find(key);
+//     if (it == socket.content.end())
+//     {
+//         return ""; // Key doesn't exist
+//     }
+//     return it->second;
+// }
+// void HttpAPI::write(std::string_view context)
+// {
+//     socket.socketfile.writeFile(context);
+// }
+// HttpAPI::HttpAPI(LocalFiles& fils, HttpFile& in) : static_files(fils), socket(in)
+// {
+// }
