@@ -24,6 +24,10 @@ void test(LocalFiles& static_files, HttpFile& file)
     {
         std::cout << " ";
     }
+    if (path == "nonexistent.html")
+    {
+        path = "404.html";
+    }
     std::cout << "回调" << path;
     auto& Localfile = static_files.get(path);
     std::string_view content = Localfile.read();
@@ -66,6 +70,19 @@ int main()
                            [&static_files](HttpFile& file) { test(static_files, file); });
     httpServer.addCallback("/css/cursor.css",
                            [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/img/cursor.jpg",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/nonexistent.html",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/index.html",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/music/404.mp3",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/music/bj.mp3",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/img/404.gif",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+
     coManager.manager.add(httpServer);
     coManager.loopTime = std::chrono::nanoseconds(0);
     coManager.start();
