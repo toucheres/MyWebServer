@@ -2,6 +2,7 @@
 #include <corutine.hpp>
 #include <cstddef>
 #include <memory>
+#include <queue>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -35,12 +36,22 @@ struct SocketFile : public co_async
       public:
         friend SocketFile;
         int fd = -1;
+        // read
         std::vector<char> content = {};
         mutable size_t r_left = 0;
         mutable size_t r_right = 0;
-        std::string_view waitingWrite = {};
-        mutable size_t w_left = 0;
-        mutable size_t w_right = 0;
+        //  write
+        struct writingFile
+        {
+            std::string waitingWrite = {};
+            mutable size_t w_left = 0;
+            mutable size_t w_right = 0;
+            writingFile(std::string&& move);
+            writingFile(const std::string& copy);
+        };
+
+        std::queue<writingFile> waitingWrites;
+
         int fd_state = OK;
     };
     static Task<> eventfun(std::shared_ptr<CONTEXT> context);
@@ -51,7 +62,7 @@ struct SocketFile : public co_async
     const std::string_view read_added() const;
     const std::string_view read_line() const;
     const std::string_view read_all() const;
-    const void writeFile(std::string_view file);
+    const void writeFile(std::string file);
     bool setNonBlocking();
     bool load(int a_fd);
     SocketFile(int a_fd);

@@ -118,29 +118,9 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         }
         else if (n == 0)
         {
-            // 可能是暂时没有数据，再次确认是否真的关闭
-            std::cout << "可能的EOF,等待确认...\n";
-
-            // 添加短暂延迟
-            co_yield {};
-
-            // 再次尝试读取
-            int confirm = read(context->fd, context->content.data() + context->r_right, 1);
-            if (confirm == 0)
-            {
-                // 确认是真的EOF
-                context->fd_state = WRONG;
-                std::cout << "确认连接已关闭\n";
-            }
-            else if (confirm > 0)
-            {
-                // 还有数据，不是EOF
-                context->r_right += confirm;
-                std::cout << "误判的EOF，连接仍然活跃\n";
-            }
-            // 如果是EAGAIN，则保持连接
-
-            co_yield {};
+            context->fd_state = WRONG;
+            std::cout << "连接已关闭\n";
+            break;
         }
         else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
         {
@@ -164,10 +144,12 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
             co_yield {};
         }
         // 写数据
-        if (context->w_right > context->w_left)
+        if (context->waitingWrites.front().w_right > context->waitingWrites.front().w_left)
         {
-            int written = ::write(context->fd, &context->waitingWrite[context->w_left],
-                                  context->w_right - context->w_left);
+            int written = ::write(
+                context->fd,
+                &context->waitingWrites.front().waitingWrite[context->waitingWrites.front().w_left],
+                context->waitingWrites.front().w_right - context->waitingWrites.front().w_left);
             if (written == -1)
             {
                 // 处理写入错误
@@ -200,11 +182,17 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
             }
             else
             {
-                context->w_left += written;
+                context->waitingWrites.front().w_left += written;
+                if (context->waitingWrites.front().w_left == context->waitingWrites.front().w_right)
+                {
+                    context->waitingWrites.pop();
+                }
+                continue;
             }
         }
         co_yield {};
     }
+    co_return;
 }
 
 int SocketFile::eventGo()
@@ -270,12 +258,9 @@ const std::string_view SocketFile::read_all() const
     return std::string_view(handle.get_context()->content.data(), handle.get_context()->r_right);
 }
 
-const void SocketFile::writeFile(std::string_view file)
+const void SocketFile::writeFile(std::string file)
 {
-    handle.context->waitingWrite = file;
-    handle.context->w_left = 0;
-    handle.context->w_right = file.length();
-    return;
+    return handle.context->waitingWrites.push(file);
 }
 
 bool SocketFile::setNonBlocking()
@@ -308,11 +293,11 @@ bool LocalFiles::add(std::string& path)
 LocalFile& LocalFiles::get(std::string& path)
 {
     auto it = fileMap.find(path);
-    if(it != fileMap.end())
+    if (it != fileMap.end())
     {
         return it->second;
     }
-    auto [newIt, _] = fileMap.emplace(path,path);
+    auto [newIt, _] = fileMap.emplace(path, path);
     return newIt->second;
 }
 
@@ -347,4 +332,14 @@ int SocketFiles::eventGo()
         }
     }
     return 0;
+}
+SocketFile::CONTEXT::writingFile::writingFile(std::string&& move)
+{
+    this->waitingWrite = std::move(move);
+    w_right = waitingWrite.length();
+}
+SocketFile::CONTEXT::writingFile::writingFile(const std::string& copy)
+{
+    this->waitingWrite = copy;
+    w_right = waitingWrite.length();
 }
