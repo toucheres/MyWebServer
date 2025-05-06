@@ -120,6 +120,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         if (n > 0)
         {
             context->r_right += n;
+            continue;
         }
         else if (n == 0)
         {
@@ -149,7 +150,8 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
             co_yield {};
         }
         // 写数据
-        if (context->waitingWrites.front().w_right > context->waitingWrites.front().w_left)
+        if (!context->waitingWrites.empty() &&
+            (context->waitingWrites.front().w_right > context->waitingWrites.front().w_left))
         {
             int written = ::write(
                 context->fd,
@@ -173,6 +175,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                 else
                 {
                     // 其他错误（连接关闭等）
+                    //[Bug] Bad address
                     std::cerr << "写入失败: " << strerror(errno) << std::endl;
                     context->fd_state = WRONG;
                     break;

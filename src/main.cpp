@@ -6,40 +6,66 @@
 #include <string>
 #include <string_view>
 
+void test(LocalFiles& static_files, HttpFile& file)
+{
+    auto pair = file.content.find("path");
+    std::string path = pair->second;
+    std::cout << "oragin" << path << '\n';
+
+    if (path == std::string("/"))
+    {
+        path = "index.html";
+    }
+    else
+    {
+        path = &path.data()[1];
+    }
+    if (path != std::string("index.html"))
+    {
+        std::cout << " ";
+    }
+    std::cout << "回调" << path;
+    auto& Localfile = static_files.get(path);
+    std::string_view content = Localfile.read();
+    if (content != "")
+    {
+        std::cout << content.size() << '\n'; //[Bug]恒为3177
+        std::string head =
+            HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
+        std::cout << head << '\n';
+        file.socketfile.writeFile(std::move(head));
+        file.socketfile.writeFile(std::move(std::string(content)));
+    }
+    else
+    {
+        content = static_files.get("404.html").read();
+        std::string head =
+            HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
+        std::cout << head << '\n';
+        file.socketfile.writeFile(std::move(head));
+        file.socketfile.writeFile(std::move(std::string(content)));
+    }
+}
+
 int main()
 {
     LocalFiles static_files;
     auto& coManager = Co_Start_Manager::getInstance();
     auto httpServer = HttpServer{};
-    
+
     // 自动加载并注册所有文件
-    httpServer.autoLoginFile(static_files);
-    
+    // httpServer.autoLoginFile(static_files);
+
     // 你也可以保留特定路径的手动回调
-    httpServer.addCallback("/",
-                           [&static_files](HttpFile& file)
-                           {
-                               auto path = file.content.at("path");
-                               if (path == "/")
-                               {
-                                   path = "index.html";
-                               }
-                               else
-                               {
-                                   path = &path.data()[1];
-                               }
-                               auto& Localfile = static_files.get(path);
-                               std::string_view content = Localfile.read();
-                               if (content != "")
-                               {
-                                   std::cout << content.size() << '\n';//[Bug]恒为3177
-                                   std::string head = HttpServer::makeHttpHead(
-                                       200, content, HttpServer::judge_file_type(path));
-                                    std::cout << head << '\n';
-                                   file.socketfile.writeFile(std::move(head));
-                                   file.socketfile.writeFile(std::move(std::string(content)));
-                               }
-                           });
+    httpServer.addCallback("/", [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/music/bj.mp3",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/img/bj.gif",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/js/sakuraPlus.js",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
+    httpServer.addCallback("/css/cursor.css",
+                           [&static_files](HttpFile& file) { test(static_files, file); });
     coManager.manager.add(httpServer);
     coManager.loopTime = std::chrono::nanoseconds(0);
     coManager.start();

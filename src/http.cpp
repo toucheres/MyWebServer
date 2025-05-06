@@ -336,6 +336,8 @@ int HttpFile::handle()
 {
     callback(*this);
     std::cout << "Headers count: " << content.size() << "\n";
+    std::cout << "path: " << content.at("path") << "\n";
+    reset();
     return 0;
 }
 
