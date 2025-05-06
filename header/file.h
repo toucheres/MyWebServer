@@ -42,7 +42,6 @@ struct SocketFile : public co_async
         mutable size_t w_left = 0;
         mutable size_t w_right = 0;
         int fd_state = OK;
-
     };
     static Task<> eventfun(std::shared_ptr<CONTEXT> context);
 

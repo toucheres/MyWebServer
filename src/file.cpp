@@ -307,7 +307,13 @@ bool LocalFiles::add(std::string& path)
 
 LocalFile& LocalFiles::get(std::string& path)
 {
-    return fileMap.at(path);
+    auto it = fileMap.find(path);
+    if(it != fileMap.end())
+    {
+        return it->second;
+    }
+    auto [newIt, _] = fileMap.emplace(path,path);
+    return newIt->second;
 }
 
 // SocketFiles实现

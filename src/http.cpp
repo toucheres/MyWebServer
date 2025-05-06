@@ -8,8 +8,69 @@
 int HttpServer::eventGo()
 {
     handle.resume();
+    processFiles(); // 添加对文件的处理
     return 0;
 }
+
+// 新增：从HttpFiles移动的fileMap处理功能
+int HttpServer::processFiles()
+{
+    std::vector<int> toRemove; // 存储需要移除的元素的键
+
+    for (auto& file : fileMap)
+    {
+        int ret = file.second.eventGo();
+        if (ret == false)
+        {
+            toRemove.push_back(file.first); // 添加到移除列表
+        }
+    }
+
+    for (int fd : toRemove)
+    {
+        fileMap.erase(fd);
+    }
+
+    return 0;
+}
+
+// 新增：从HttpFiles移动的add方法
+bool HttpServer::add(int fd)
+{
+    auto [it, inserted] = this->fileMap.try_emplace(fd, fd);
+    if (!inserted)
+    {
+        it->second = fd; // 或更新现有值
+        return false;
+    }
+    else
+    {
+        it->second.callback = [this](HttpFile& self)
+        { 
+            auto pathIter = self.content.find("path");
+            if (pathIter != self.content.end()) {
+                auto cbIter = this->callbacks.find(pathIter->second);
+                if (cbIter != this->callbacks.end()) {
+                    cbIter->second(self);
+                }
+            }
+        };
+    }
+    return true;
+}
+
+// 新增：从HttpFiles移动的get方法
+HttpFile& HttpServer::get(int fd)
+{
+    return fileMap.at(fd);
+}
+
+// 新增：从HttpFiles移动的getMap方法
+const std::unordered_map<int, HttpFile>& HttpServer::getMap()
+{
+    return fileMap;
+}
+
 int HttpServer::makeSocket()
 {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -53,10 +114,6 @@ int HttpServer::AcceptSocket(int server_fd, struct sockaddr* client_addr,
                              socklen_t* client_addr_len)
 {
     // 确保服务器套接字是非阻塞的
-    // if (!setNonBlocking(server_fd))
-    // {
-    //     return -1;
-    // }
     int client_fd = accept(server_fd, client_addr, client_addr_len);
     if (client_fd == -1)
     {
@@ -73,6 +130,7 @@ int HttpServer::AcceptSocket(int server_fd, struct sockaddr* client_addr,
     }
     return client_fd;
 }
+
 HttpServer::HttpServer(std::string ip_listening, uint16_t port)
     : ip_listening(ip_listening), port(port), running(false), server_fd(-1)
 {
@@ -91,17 +149,16 @@ HttpServer::HttpServer(std::string ip_listening, uint16_t port)
     {
         std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
     }
-    manager.add(sockets);
-    callbacks["1"] = [](HttpFile& self)
-    {
-        const char* response = "HTTP/1.1 200 OK\r\n"
-                               "Content-Type: text/plain\r\n"
-                               "Content-Length: 25\r\n"
-                               "Connection: keep-alive\r\n"
-                               "\r\n"
-                               "Hello from MyWebServer!\r\n";
-        self.socketfile.writeFile(response);
-    };
+    // callbacks["1"] = [](HttpFile& self)
+    // {
+    //     const char* response = "HTTP/1.1 200 OK\r\n"
+    //                            "Content-Type: text/plain\r\n"
+    //                            "Content-Length: 25\r\n"
+    //                            "Connection: keep-alive\r\n"
+    //                            "\r\n"
+    //                            "Hello from MyWebServer!\r\n";
+    //     self.socketfile.writeFile(response);
+    // };
 }
 
 HttpServer::~HttpServer()
@@ -129,7 +186,6 @@ Task<void, void> HttpServer::start()
     size_t size_client = sizeof(client);
     while (1)
     {
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
         manager.go();
         int connfd = AcceptSocket(server_fd, &client, (socklen_t*)(&size_client));
         if (connfd == -2)
@@ -142,7 +198,7 @@ Task<void, void> HttpServer::start()
         }
         else
         {
-            this->sockets.add(connfd);
+            this->add(connfd); // 直接使用HttpServer的add方法
         }
         co_yield {};
     }
@@ -166,52 +222,33 @@ void HttpServer::addCallbackFormat(std::string format, std::function<void(HttpFi
 
 std::string HttpServer::processRequest(const std::string& request)
 {
-    // 待实现
     return "";
 }
 
 void HttpServer::handleClient(int client_fd)
 {
-    // 待实现
 }
+
 int HttpFile::eventGo()
 {
     corutine.resume();
     return httpState;
 }
 
-HttpFile::HttpFile(int fd) : socketfile(fd)
+HttpFile::HttpFile(int fd, std::function<void(HttpFile&)> a_callback)
+    : socketfile(fd), callback(a_callback)
 {
-    callback = [](HttpFile& self)
-    {
-        const char* response = "HTTP/1.1 200 OK\r\n"
-                               "Content-Type: text/plain\r\n"
-                               "Content-Length: 25\r\n"
-                               "Connection: keep-alive\r\n"
-                               "\r\n"
-                               "Hello from MyWebServer!\r\n";
-        self.socketfile.writeFile(response);
-    };
 }
 
 int HttpFile::handle()
 {
     callback(*this);
-    // 输出解析结果
-    // std::cout << "Request parsed: " << method << " " << path << "\n";
     std::cout << "Headers count: " << content.size() << "\n";
-
-    // 关闭连接并更新状态
-    // [ERROR]writeFile异步，不能关
-    // close(socketfile.handle.context->fd);
-    // std::cout << "连接已主动关闭: " << socketfile.handle.context->fd << std::endl;
-    // socketfile.handle.context->fd_state = SocketFile::WRONG;
-
     return 0;
 }
+
 void HttpFile::reset()
 {
-    // 重置解析状态
     content.clear();
     state = REQUEST_LINE;
     method.clear();
@@ -221,6 +258,7 @@ void HttpFile::reset()
     body_read = 0;
     body_buffer.clear();
 }
+
 Task<void, void> HttpFile::eventloop()
 {
     while (1)
@@ -232,9 +270,6 @@ Task<void, void> HttpFile::eventloop()
             co_yield {};
         }
 
-        // 检查连接状态
-        // std::cout << (socketfile.handle.context) << '\n';
-        // std::cout << (socketfile.handle.context->fd_state == SocketFile::WRONG) << '\n';
         if ((!socketfile.handle.context) ||
             (socketfile.handle.context->fd_state == SocketFile::WRONG))
         {
@@ -255,7 +290,6 @@ Task<void, void> HttpFile::eventloop()
             {
                 std::cout << "fd: " << socketfile.handle.context.get()->fd << " 请求行: " << tp;
 
-                // 解析请求行: METHOD PATH VERSION
                 size_t first_space = tp.find(' ');
                 size_t second_space = tp.find(' ', first_space + 1);
 
@@ -263,10 +297,9 @@ Task<void, void> HttpFile::eventloop()
                 {
                     method = std::string(tp.substr(0, first_space));
                     path = std::string(tp.substr(first_space + 1, second_space - first_space - 1));
-                    version = std::string(tp.substr(second_space + 1,
-                                                    tp.length() - second_space - 3)); // 移除\r\n
+                    version =
+                        std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
 
-                    // 存储请求信息
                     content.try_emplace("method", method);
                     content.try_emplace("path", path);
                     content.try_emplace("version", version);
@@ -284,12 +317,8 @@ Task<void, void> HttpFile::eventloop()
             }
             if (tp == "\r\n")
             {
-                // 空行，表示头部结束
-
-                // 检查是否是POST请求
                 if (method == "POST")
                 {
-                    // 查找Content-Length头部
                     auto it = content.find("content-length");
                     if (it != content.end())
                     {
@@ -316,25 +345,21 @@ Task<void, void> HttpFile::eventloop()
             }
             else
             {
-                // 解析头部
                 size_t index = tp.find(": ");
                 if (index != std::string_view::npos)
                 {
-                    // 转换为小写键
                     std::string key(tp.substr(0, index));
                     std::transform(key.begin(), key.end(), key.begin(),
                                    [](unsigned char c) { return std::tolower(c); });
 
-                    // 提取值（去除尾部的\r\n）
                     std::string val;
                     if (index + 2 < tp.length())
                     {
-                        size_t val_len = tp.length() - (index + 2) - 2; // 减去\r\n
+                        size_t val_len = tp.length() - (index + 2) - 2;
                         val = std::string(tp.substr(index + 2, val_len));
                     }
 
                     content.try_emplace(key, val);
-                    // std::cout << key << ": " << val << '\n';
                 }
             }
             break;
@@ -345,7 +370,6 @@ Task<void, void> HttpFile::eventloop()
                 co_yield {};
                 continue;
             }
-            // 处理POST请求体
             if (body_read < content_length)
             {
                 body_buffer.append(tp.data(), tp.length());
@@ -353,7 +377,6 @@ Task<void, void> HttpFile::eventloop()
 
                 if (body_read >= content_length)
                 {
-                    // 所有内容已读取完成
                     content.try_emplace("postcontent", body_buffer);
                     state = COMPLETE;
                 }
@@ -361,90 +384,18 @@ Task<void, void> HttpFile::eventloop()
             break;
 
         case COMPLETE:
-            // 请求处理完成，发送响应
+        {
+            if (socketfile.handle.context &&
+                socketfile.handle.context->fd_state != SocketFile::WRONG)
             {
-                // 检查连接状态后再写入
-                if (socketfile.handle.context &&
-                    socketfile.handle.context->fd_state != SocketFile::WRONG)
-                {
-                    handle();
-                    state = REQUEST_LINE;
-                }
-
-                // // 通知系统该连接已结束处理
-                // httpState = -1;
+                handle();
+                state = REQUEST_LINE;
             }
-            break;
+        }
+        break;
         }
 
         co_yield {};
     }
     co_return;
 }
-int HttpFiles::eventGo()
-{
-    std::vector<int> toRemove; // Store keys of elements to remove
-
-    for (auto& file : fileMap)
-    {
-        int ret = file.second.eventGo();
-        if (ret == false)
-        {
-            toRemove.push_back(file.first); // Add key to removal list
-        }
-    }
-
-    for (int fd : toRemove)
-    {
-        fileMap.erase(fd);
-    }
-
-    return 0;
-}
-bool HttpFiles::add(int fd)
-{
-    auto [it, inserted] = this->fileMap.try_emplace(fd, fd);
-    if (!inserted)
-    {
-        it->second = fd; // 或更新现有值
-        return false;
-    }
-    else
-    {
-        // it->second.callback = 
-    }
-    return true;
-}
-HttpFile& HttpFiles::get(int fd)
-{
-    return fileMap.at(fd);
-}
-const std::unordered_map<int, HttpFile>& HttpFiles::getMap()
-{
-    return fileMap;
-}
-// std::string_view HttpAPI::getUrl()
-// {
-//     auto it = this->socket.content.find("path");
-//     if (it == socket.content.end())
-//     {
-//         return ""; // Key doesn't exist
-//     }
-//     return it->second;
-// }
-// std::string_view HttpAPI::getContext(std::string_view key)
-// {
-//     auto it = this->socket.content.find(key);
-//     if (it == socket.content.end())
-//     {
-//         return ""; // Key doesn't exist
-//     }
-//     return it->second;
-// }
-// void HttpAPI::write(std::string_view context)
-// {
-//     socket.socketfile.writeFile(context);
-// }
-// HttpAPI::HttpAPI(LocalFiles& fils, HttpFile& in) : static_files(fils), socket(in)
-// {
-// }

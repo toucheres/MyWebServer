@@ -12,25 +12,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
-class HttpFiles;
 class HttpFile;
 class HttpServer;
-// class HttpAPI
-// {
-//     LocalFiles& static_files;
-//     HttpFile& socket;
-//     std::string_view getUrl();
-//     std::string_view getContext(std::string_view key);
-//     void write(std::string_view context);
-//     HttpAPI(LocalFiles& files, HttpFile& in);
-// };
+
 class HttpFile : public co_async
 {
-    friend HttpFiles;
     friend HttpServer;
     // friend HttpAPI; // 修改为正确引用嵌套类
-    SocketFile socketfile;
-    std::map<std::string_view, std::string_view> content;
+
     int httpState = true;
     void reset();
     enum ParseState
@@ -50,23 +39,14 @@ class HttpFile : public co_async
     std::string body_buffer;
 
   public:
+    std::map<std::string, std::string> content;
+    SocketFile socketfile;
     std::function<void(HttpFile&)> callback;
     int eventGo() override;
-    HttpFile(int fd);
+    HttpFile(int fd, std::function<void(HttpFile&)> callback = nullptr);
     virtual int handle();
     Task<void, void> eventloop();
     Task<void, void> corutine = eventloop();
-};
-struct HttpFiles : public co_async
-{
-  private:
-    std::unordered_map<int, HttpFile> fileMap;
-
-  public:
-    virtual int eventGo() override;
-    bool add(int fd);
-    HttpFile& get(int fd);
-    const std::unordered_map<int, HttpFile>& getMap();
 };
 
 class HttpServer : public co_async
@@ -76,7 +56,7 @@ class HttpServer : public co_async
     uint16_t port;
     std::string ip_listening;
     bool running;
-    HttpFiles sockets;
+    std::unordered_map<int, HttpFile> fileMap; // 从HttpFiles移动过来的fileMap
     Co_Manager manager;
     // std::unordered_map<std::string, HttpAPI> callback;
     //  创建套接字
@@ -99,4 +79,10 @@ class HttpServer : public co_async
     void addCallback(std::string path, std::function<void(HttpFile&)> callback);
     void addCallbackFormat(std::string format, std::function<void(HttpFile&)> callback);
     void handleClient(int client_fd);
+
+    // 从HttpFiles移动过来的方法
+    bool add(int fd);
+    HttpFile& get(int fd);
+    const std::unordered_map<int, HttpFile>& getMap();
+    int processFiles(); // 替代原HttpFiles的eventGo
 };
