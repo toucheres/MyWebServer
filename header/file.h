@@ -17,7 +17,7 @@ struct LocalFile
     std::vector<char> content;
     std::string path = "";
     size_t size = 0;
-    std::string_view test;
+    std::string_view fileview;
 
   public:
     bool load(std::string& path);
@@ -85,7 +85,7 @@ struct LocalFiles
 
   public:
     bool add(std::string& path);
-    LocalFile& get(std::string& path);
+    LocalFile& get(const std::string& path);
 };
 struct SocketFiles : public co_async
 {

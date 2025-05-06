@@ -16,7 +16,8 @@ LocalFile::LocalFile(std::string a_path) : path(std::move(a_path)), size(0)
 }
 
 LocalFile::LocalFile(LocalFile&& move)
-    : content(std::move(move.content)), path(std::move(move.path)), size(move.size), test(move.test)
+    : content(std::move(move.content)), path(std::move(move.path)), size(move.size),
+      fileview(move.fileview)
 {
     move.size = 0;
 }
@@ -24,13 +25,17 @@ LocalFile::LocalFile(LocalFile&& move)
 bool LocalFile::load(std::string& path)
 {
     this->path = path;
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    std::ifstream file(path.data(), std::ios::binary);
     if (!file.is_open())
     {
         return false;
+        content.clear();
+        fileview = "";
     }
 
-    size = file.tellg();
+    file.seekg(0, std::ios::end);
+    std::streamsize size_file = file.tellg();
+    size = size_file;
     file.seekg(0, std::ios::beg);
 
     content.resize(size);
@@ -39,13 +44,13 @@ bool LocalFile::load(std::string& path)
         file.read(content.data(), size);
     }
 
-    test = std::string_view(content.data(), size);
+    fileview = std::string_view(content.data(), size);
     return true;
 }
 
 std::string_view LocalFile::read()
 {
-    return test;
+    return fileview;
 }
 
 // SocketFile实现
@@ -258,7 +263,7 @@ const std::string_view SocketFile::read_all() const
     return std::string_view(handle.get_context()->content.data(), handle.get_context()->r_right);
 }
 
-const void SocketFile::writeFile(std::string file)
+const void SocketFile::writeFile(const std::string file)
 {
     return handle.context->waitingWrites.push(file);
 }
@@ -290,7 +295,7 @@ bool LocalFiles::add(std::string& path)
     return true; // 文件已存在
 }
 
-LocalFile& LocalFiles::get(std::string& path)
+LocalFile& LocalFiles::get(const std::string& path)
 {
     auto it = fileMap.find(path);
     if (it != fileMap.end())

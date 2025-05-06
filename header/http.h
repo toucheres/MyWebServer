@@ -6,7 +6,6 @@
 #include <map>
 #include <netinet/in.h>
 #include <string>
-#include <string_view>
 #include <sys/fcntl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -73,11 +72,15 @@ class HttpServer : public co_async
     std::map<std::string, std::function<void(HttpFile&)>> callbacks_format;
 
   public:
+    void autoLoginFile(LocalFiles& static_files);
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
     bool stop();
     void addCallback(std::string path, std::function<void(HttpFile&)> callback);
     void addCallbackFormat(std::string format, std::function<void(HttpFile&)> callback);
+    static std::string makeHttpHead(int status, std::string_view content,
+                                    std::string_view content_type = "text/plain;charset=utf-8");
+    static std::string judge_file_type(std::string_view path);
     void handleClient(int client_fd);
 
     // 从HttpFiles移动过来的方法
