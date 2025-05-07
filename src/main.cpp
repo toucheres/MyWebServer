@@ -2,121 +2,61 @@
 #include <corutine.hpp>
 #include <file.h>
 #include <http.h>
-#include <iostream>
 #include <string>
 #include <string_view>
-void printVariant(const std::variant<int, double, std::string>& var)
-{
-    if (std::holds_alternative<int>(var))
-    {
-        std::cout << std::get<int>(var);
-    }
-    else if (std::holds_alternative<double>(var))
-    {
-        std::cout << std::get<double>(var);
-    }
-    else if (std::holds_alternative<std::string>(var))
-    {
-        std::cout << "\"" << std::get<std::string>(var) << "\"";
-    }
-}
-void autoFile(LocalFiles& static_files, HttpFile& file)
-{
-    auto pair = file.content.find("path");
-    std::string path = pair->second;
-    // std::cout << "oragin" << path << '\n';
-
-    if (path == std::string("/"))
-    {
-        path = "index.html";
-    }
-    else
-    {
-        path = &path.data()[1];
-    }
-    if (path != std::string("index.html"))
-    {
-        // std::cout << " ";
-    }
-    if (path == "nonexistent.html")
-    {
-        path = "404.html";
-    }
-    // std::cout << "回调" << path;
-    auto& Localfile = static_files.get(path);
-    std::string_view content = Localfile.read();
-    if (content != "")
-    {
-        // std::cout << content.size() << '\n';
-        std::string head =
-            HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
-        // std::cout << head << '\n';
-        file.socketfile.writeFile(std::move(head));
-        file.socketfile.writeFile(std::move(std::string(content)));
-    }
-    else
-    {
-        content = static_files.get("404.html").read();
-        std::string head =
-            HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
-        // std::cout << head << '\n';
-        file.socketfile.writeFile(std::move(head));
-        file.socketfile.writeFile(std::move(std::string(content)));
-    }
-}
-
 int main()
 {
     LocalFiles static_files;
     auto& coManager = Co_Start_Manager::getInstance();
     auto httpServer = HttpServer{};
-
-    // 自动加载并注册所有文件
-    // httpServer.autoLoginFile(static_files);
-
-    // 你也可以保留特定路径的手动回调
-    // httpServer.addCallback("/", [&static_files](HttpFile& file) { autoFile(static_files, file);
-    // }); httpServer.addCallback("/music/bj.mp3",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/img/bj.gif",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/js/sakuraPlus.js",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/css/cursor.css",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/img/cursor.jpg",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/nonexistent.html",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/index.html",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/music/404.mp3",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/music/bj.mp3",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    // httpServer.addCallback("/img/404.gif",
-    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
     httpServer.addCallbackFormat(
         Format{"/", Format::Type::same},
-        [](HttpFile& file) { std::cout << file.content.at("path") << "be same \"/\"" << '\n'; });
-    httpServer.addCallbackFormat(
-        Format{"/%s", Format::Type::scanf},
-        [](HttpFile& file)
+        [&static_files](HttpFile& file)
         {
-            std::cout << file.content.at("path") << " be scanf" << '\n';
-            class std::optional<Format::ParseResult> a =
-                (Format{"/%s", Format::Type::scanf}.parse(file.content.at("path")));
-            if (a)
+            auto& Localfile = static_files.get("index.html");
+            std::string_view content = Localfile.read();
+            if (content != "")
             {
-                for (const auto& val : *a)
-                {
-                    printVariant(val);
-                    std::cout << "---";
-                }
-                std::cout << "\n";
+                // std::cout << content.size() << '\n';
+                std::string head = HttpServer::makeHttpHead(
+                    200, content, HttpServer::judge_file_type("index.html"));
+                // std::cout << head << '\n';
+                file.socketfile.writeFile(std::move(head));
+                file.socketfile.writeFile(std::move(std::string(content)));
             }
         });
-
+    httpServer.addCallbackFormat(
+        Format{"/%s", Format::Type::scanf},
+        [&static_files](HttpFile& file)
+        {
+            auto parseResult = Format{"/%s", Format::Type::scanf}.parse(file.content.at("path"));
+            std::string path = "404.html"; // Default path
+            if (parseResult && !parseResult->empty() &&
+                std::holds_alternative<std::string>((*parseResult)[0]))
+            {
+                path = std::get<std::string>((*parseResult)[0]);
+            }
+            auto& Localfile = static_files.get(path);
+            std::string_view content = Localfile.read();
+            if (content != "")
+            {
+                // std::cout << content.size() << '\n';
+                std::string head =
+                    HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
+                // std::cout << head << '\n';
+                file.socketfile.writeFile(std::move(head));
+                file.socketfile.writeFile(std::move(std::string(content)));
+            }
+            else
+            {
+                content = static_files.get("404.html").read();
+                std::string head =
+                    HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
+                // std::cout << head << '\n';
+                file.socketfile.writeFile(std::move(head));
+                file.socketfile.writeFile(std::move(std::string(content)));
+            }
+        });
     coManager.manager.add(httpServer);
     coManager.loopTime = std::chrono::nanoseconds(0);
     coManager.start();
