@@ -50,8 +50,8 @@ bool HttpServer::add(int fd)
             auto pathIter = self.content.find("path");
             if (pathIter != self.content.end())
             {
+                // std::cout << "---" << pathIter->second << "---\n";
                 auto cbIter = this->callbacks.find(pathIter->second);
-                std::cout << "---" << cbIter->first << "---\n";
                 if (cbIter != this->callbacks.end())
                 {
                     cbIter->second(self);
@@ -346,7 +346,7 @@ int HttpFile::handle()
 {
     callback(*this);
     // std::cout << "Headers count: " << content.size() << "\n";
-    std::cout << "path: " << content.at("path") << "\n";
+    // std::cout << "path: " << content.at("path") << "\n";
     reset();
     return 0;
 }

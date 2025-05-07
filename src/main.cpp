@@ -5,7 +5,21 @@
 #include <iostream>
 #include <string>
 #include <string_view>
-
+void printVariant(const std::variant<int, double, std::string>& var)
+{
+    if (std::holds_alternative<int>(var))
+    {
+        std::cout << std::get<int>(var);
+    }
+    else if (std::holds_alternative<double>(var))
+    {
+        std::cout << std::get<double>(var);
+    }
+    else if (std::holds_alternative<std::string>(var))
+    {
+        std::cout << "\"" << std::get<std::string>(var) << "\"";
+    }
+}
 void autoFile(LocalFiles& static_files, HttpFile& file)
 {
     auto pair = file.content.find("path");
@@ -82,8 +96,26 @@ int main()
     //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
     // httpServer.addCallback("/img/404.gif",
     //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
-    httpServer.addCallbackFormat(Format{"/*s", Format::Type::scanf}, [](HttpFile& file)
-                                 { std::cout << file.content.at("path") << '\n'; });
+    httpServer.addCallbackFormat(
+        Format{"/", Format::Type::same},
+        [](HttpFile& file) { std::cout << file.content.at("path") << "be same \"/\"" << '\n'; });
+    httpServer.addCallbackFormat(
+        Format{"/%s", Format::Type::scanf},
+        [](HttpFile& file)
+        {
+            std::cout << file.content.at("path") << " be scanf" << '\n';
+            class std::optional<Format::ParseResult> a =
+                (Format{"/%s", Format::Type::scanf}.parse(file.content.at("path")));
+            if (a)
+            {
+                for (const auto& val : *a)
+                {
+                    printVariant(val);
+                    std::cout << "---";
+                }
+                std::cout << "\n";
+            }
+        });
 
     coManager.manager.add(httpServer);
     coManager.loopTime = std::chrono::nanoseconds(0);
