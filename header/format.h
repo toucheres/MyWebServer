@@ -1,5 +1,6 @@
 #include <string>
 // #include <system_error>
+#include <string_view>
 #include <vector>
 #include <variant>
 #include <optional>
@@ -26,6 +27,7 @@ class Format
     
     // 添加字符串匹配方法
     bool match(const std::string& str) const;
+    bool match(std::string_view str) const;
     
     // 添加解析方法，返回解析结果
     std::optional<ParseResult> parse(const std::string& str) const;

@@ -125,7 +125,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         else if (n == 0)
         {
             context->fd_state = WRONG;
-            std::cout << "连接已关闭\n";
+            // std::cout << "连接已关闭\n";
             break;
         }
         else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))

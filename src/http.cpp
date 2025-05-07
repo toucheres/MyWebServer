@@ -2,7 +2,6 @@
 #include "file.h"
 #include <errno.h>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <string_view>
 #include <unistd.h>
@@ -52,9 +51,20 @@ bool HttpServer::add(int fd)
             if (pathIter != self.content.end())
             {
                 auto cbIter = this->callbacks.find(pathIter->second);
+                std::cout << "---" << cbIter->first << "---\n";
                 if (cbIter != this->callbacks.end())
                 {
                     cbIter->second(self);
+                }
+                else
+                {
+                    for (auto& call : this->callbacks_format)
+                    {
+                        if (call.first == pathIter->second)
+                        {
+                            call.second(self);
+                        }
+                    }
                 }
             }
         };
@@ -215,10 +225,10 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                             std::string_view content = Localfile.read();
                             if (content != "")
                             {
-                                std::cout << content.size() << '\n';
+                                // std::cout << content.size() << '\n';
                                 std::string head = HttpServer::makeHttpHead(
                                     200, content, HttpServer::judge_file_type(path));
-                                std::cout << head << '\n';
+                                // std::cout << head << '\n';
                                 file.socketfile.writeFile(std::move(head));
                                 file.socketfile.writeFile(std::move(std::string(content)));
                             }
@@ -262,7 +272,7 @@ void HttpServer::addCallback(std::string path, std::function<void(HttpFile&)> ca
     callbacks.insert_or_assign(path, callback);
 }
 
-void HttpServer::addCallbackFormat(std::string format, std::function<void(HttpFile&)> callback)
+void HttpServer::addCallbackFormat(Format format, std::function<void(HttpFile&)> callback)
 {
     callbacks_format.insert_or_assign(format, callback);
 }
@@ -335,7 +345,7 @@ HttpFile::HttpFile(int fd, std::function<void(HttpFile&)> a_callback)
 int HttpFile::handle()
 {
     callback(*this);
-    std::cout << "Headers count: " << content.size() << "\n";
+    // std::cout << "Headers count: " << content.size() << "\n";
     std::cout << "path: " << content.at("path") << "\n";
     reset();
     return 0;
@@ -368,7 +378,7 @@ Task<void, void> HttpFile::eventloop()
             (socketfile.handle.context->fd_state == SocketFile::WRONG))
         {
             httpState = false;
-            std::cout << "连接已关闭: " << socketfile.handle.context->fd << std::endl;
+            // std::cout << "连接已关闭: " << socketfile.handle.context->fd << std::endl;
             co_yield {};
         }
         std::string_view tp = socketfile.read_line();
@@ -382,7 +392,7 @@ Task<void, void> HttpFile::eventloop()
             }
             if (!tp.empty())
             {
-                std::cout << "fd: " << socketfile.handle.context.get()->fd << " 请求行: " << tp;
+                // std::cout << "fd: " << socketfile.handle.context.get()->fd << " 请求行: " << tp;
 
                 size_t first_space = tp.find(' ');
                 size_t second_space = tp.find(' ', first_space + 1);

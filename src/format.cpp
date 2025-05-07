@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
-#include <memory>
 
 Format::Format(std::string format, Type type) : format(std::move(format)), type(type) 
 {
@@ -30,6 +29,37 @@ bool Format::match(const std::string& str) const
         }
         default:
             return false;
+    }
+}
+
+bool Format::match(std::string_view str) const
+{
+    switch (type)
+    {
+    case Type::same:
+        return format == str;
+    case Type::prefix:
+        return str.compare(0, format.size(), format) == 0;
+    case Type::suffix:
+    {
+        if (str.size() < format.size())
+            return false;
+        return str.compare(str.size() - format.size(), format.size(), format) == 0;
+    }
+    case Type::regex:
+    {
+        try
+        {
+            std::regex pattern(format);
+            return std::regex_match(str.begin(),str.end(), pattern);
+        }
+        catch (const std::regex_error&)
+        {
+            return false;
+        }
+    }
+    default:
+        return false;
     }
 }
 

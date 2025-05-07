@@ -1,68 +1,92 @@
-#include <format.h>
+#include <chrono>
+#include <corutine.hpp>
+#include <file.h>
+#include <http.h>
 #include <iostream>
 #include <string>
-#include <variant>
+#include <string_view>
 
-// 用于打印变体类型的辅助函数
-void printVariant(const std::variant<int, double, std::string>& var) {
-    if (std::holds_alternative<int>(var)) {
-        std::cout << std::get<int>(var);
-    } else if (std::holds_alternative<double>(var)) {
-        std::cout << std::get<double>(var);
-    } else if (std::holds_alternative<std::string>(var)) {
-        std::cout << "\"" << std::get<std::string>(var) << "\"";
+void autoFile(LocalFiles& static_files, HttpFile& file)
+{
+    auto pair = file.content.find("path");
+    std::string path = pair->second;
+    // std::cout << "oragin" << path << '\n';
+
+    if (path == std::string("/"))
+    {
+        path = "index.html";
+    }
+    else
+    {
+        path = &path.data()[1];
+    }
+    if (path != std::string("index.html"))
+    {
+        // std::cout << " ";
+    }
+    if (path == "nonexistent.html")
+    {
+        path = "404.html";
+    }
+    // std::cout << "回调" << path;
+    auto& Localfile = static_files.get(path);
+    std::string_view content = Localfile.read();
+    if (content != "")
+    {
+        // std::cout << content.size() << '\n';
+        std::string head =
+            HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
+        // std::cout << head << '\n';
+        file.socketfile.writeFile(std::move(head));
+        file.socketfile.writeFile(std::move(std::string(content)));
+    }
+    else
+    {
+        content = static_files.get("404.html").read();
+        std::string head =
+            HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
+        // std::cout << head << '\n';
+        file.socketfile.writeFile(std::move(head));
+        file.socketfile.writeFile(std::move(std::string(content)));
     }
 }
 
 int main()
 {
-    // 测试不同类型的Format匹配
-    Format exact{"hello", Format::Type::same};
-    Format prefix{"pre", Format::Type::prefix};
-    Format suffix{"fix", Format::Type::suffix};
-    Format regex{"(\\d+)-(\\w+)", Format::Type::regex};
-    Format scanf{"Value: %d, Name: %s", Format::Type::scanf};
+    LocalFiles static_files;
+    auto& coManager = Co_Start_Manager::getInstance();
+    auto httpServer = HttpServer{};
 
-    // 测试基本匹配功能
-    std::cout << "基本匹配测试:\n";
-    std::cout << "Exact match: " << std::boolalpha << exact.match("hello") << std::endl;
-    std::cout << "Prefix match: " << prefix.match("prefix") << std::endl;
-    std::cout << "Suffix match: " << suffix.match("suffix") << std::endl;
-    std::cout << "Regex match: " << regex.match("123-abc") << std::endl;
-    std::cout << "Scanf match: " << scanf.match("Value: 42, Name: John") << std::endl;
-    
-    // 测试解析功能
-    std::cout << "\n解析功能测试:\n";
-    
-    // 测试正则表达式解析
-    std::string regexTest = "123-abc";
-    auto regexResult = regex.parse(regexTest);
-    std::cout << "Regex parse \"" << regexTest << "\": ";
-    if (regexResult) {
-        std::cout << "成功，捕获组: ";
-        for (const auto& val : *regexResult) {
-            printVariant(val);
-            std::cout << " ";
-        }
-        std::cout << std::endl;
-    } else {
-        std::cout << "失败" << std::endl;
-    }
-    
-    // 测试scanf解析
-    std::string scanfTest = "Value: 42, Name: John";
-    auto scanfResult = scanf.parse(scanfTest);
-    std::cout << "Scanf parse \"" << scanfTest << "\": ";
-    if (scanfResult) {
-        std::cout << "成功，变量: ";
-        for (const auto& val : *scanfResult) {
-            printVariant(val);
-            std::cout << " ";
-        }
-        std::cout << std::endl;
-    } else {
-        std::cout << "失败" << std::endl;
-    }
-    
+    // 自动加载并注册所有文件
+    // httpServer.autoLoginFile(static_files);
+
+    // 你也可以保留特定路径的手动回调
+    // httpServer.addCallback("/", [&static_files](HttpFile& file) { autoFile(static_files, file);
+    // }); httpServer.addCallback("/music/bj.mp3",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/img/bj.gif",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/js/sakuraPlus.js",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/css/cursor.css",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/img/cursor.jpg",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/nonexistent.html",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/index.html",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/music/404.mp3",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/music/bj.mp3",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    // httpServer.addCallback("/img/404.gif",
+    //                        [&static_files](HttpFile& file) { autoFile(static_files, file); });
+    httpServer.addCallbackFormat(Format{"/*s", Format::Type::scanf}, [](HttpFile& file)
+                                 { std::cout << file.content.at("path") << '\n'; });
+
+    coManager.manager.add(httpServer);
+    coManager.loopTime = std::chrono::nanoseconds(0);
+    coManager.start();
     return 0;
 }

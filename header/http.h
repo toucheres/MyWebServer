@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
+#include <format.h>
 class HttpFile;
 class HttpServer;
 
@@ -69,7 +70,7 @@ class HttpServer : public co_async
     Task<void, void> handle = start();
     std::string processRequest(const std::string& request);
     std::map<std::string, std::function<void(HttpFile&)>> callbacks;
-    std::map<std::string, std::function<void(HttpFile&)>> callbacks_format;
+    std::map<Format, std::function<void(HttpFile&)>> callbacks_format;
 
   public:
     void autoLoginFile(LocalFiles& static_files);
@@ -77,7 +78,7 @@ class HttpServer : public co_async
     ~HttpServer();
     bool stop();
     void addCallback(std::string path, std::function<void(HttpFile&)> callback);
-    void addCallbackFormat(std::string format, std::function<void(HttpFile&)> callback);
+    void addCallbackFormat(Format format, std::function<void(HttpFile&)> callback);
     static std::string makeHttpHead(int status, std::string_view content,
                                     std::string_view content_type = "text/plain;charset=utf-8");
     static std::string judge_file_type(std::string_view path);
