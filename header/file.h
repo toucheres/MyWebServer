@@ -64,6 +64,7 @@ struct SocketFile : public co_async
     const std::string_view read_all() const;
     const void writeFile(std::string file);
     bool setNonBlocking();
+    void closeIt();
     bool load(int a_fd);
     SocketFile(int a_fd);
     ~SocketFile();

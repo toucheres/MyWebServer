@@ -92,7 +92,11 @@ bool SocketFile::load(int a_fd)
     handle.get_context()->content.resize(4096); // 预分配缓冲区
     return true;
 }
-
+void SocketFile::closeIt()
+{
+    handle.get_context()->fd_state = WRONG;
+    this->eventGo();
+}
 Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
 {
     // int loop = 0;

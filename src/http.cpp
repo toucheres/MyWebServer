@@ -51,21 +51,22 @@ bool HttpServer::add(int fd)
             if (pathIter != self.content.end())
             {
                 // std::cout << "---" << pathIter->second << "---\n";
-                auto cbIter = this->callbacks.find(pathIter->second);
-                if (cbIter != this->callbacks.end())
+                // auto cbIter = this->callbacks.find(pathIter->second);
+                // if (cbIter != this->callbacks.end())
+                // {
+                //     cbIter->second(self);
+                // }
+                // else
+                // {
+                for (auto call = callbacks_format.begin(); call != callbacks_format.end(); call++)
                 {
-                    cbIter->second(self);
-                }
-                else
-                {
-                    for (auto& call : this->callbacks_format)
+                    if (call->first == pathIter->second)
                     {
-                        if (call.first == pathIter->second)
-                        {
-                            call.second(self);
-                        }
+                        call->second(self);
+                        break;
                     }
                 }
+                // }
             }
         };
     }
@@ -207,32 +208,32 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
             std::filesystem::path relative_path =
                 std::filesystem::relative(entry.path(), current_path);
             std::string url_path = "/" + relative_path.string(); // 转换为URL路径格式
-            std::cout << url_path << '\n';
+            // std::cout << url_path << '\n';
             // 为该文件路径添加回调
-            addCallback(url_path,
-                        [&static_files](HttpFile& file)
-                        {
-                            auto path = file.content.at("path");
-                            if (path == "/")
-                            {
-                                path = "index.html";
-                            }
-                            else
-                            {
-                                path = &path.data()[1];
-                            }
-                            auto& Localfile = static_files.get(path);
-                            std::string_view content = Localfile.read();
-                            if (content != "")
-                            {
-                                // std::cout << content.size() << '\n';
-                                std::string head = HttpServer::makeHttpHead(
-                                    200, content, HttpServer::judge_file_type(path));
-                                // std::cout << head << '\n';
-                                file.socketfile.writeFile(std::move(head));
-                                file.socketfile.writeFile(std::move(std::string(content)));
-                            }
-                        });
+            addCallbackFormat(Format{url_path, Format::Type::same},
+                              [&static_files](HttpFile& file)
+                              {
+                                  auto path = file.content.at("path");
+                                  if (path == "/")
+                                  {
+                                      path = "index.html";
+                                  }
+                                  else
+                                  {
+                                      path = &path.data()[1];
+                                  }
+                                  auto& Localfile = static_files.get(path);
+                                  std::string_view content = Localfile.read();
+                                  if (content != "")
+                                  {
+                                      // std::cout << content.size() << '\n';
+                                      std::string head = HttpServer::makeHttpHead(
+                                          200, content, HttpServer::judge_file_type(path));
+                                      // std::cout << head << '\n';
+                                      file.socketfile.writeFile(std::move(head));
+                                      file.socketfile.writeFile(std::move(std::string(content)));
+                                  }
+                              });
         }
     }
 }
@@ -267,14 +268,31 @@ bool HttpServer::stop()
     return true;
 }
 
-void HttpServer::addCallback(std::string path, std::function<void(HttpFile&)> callback)
-{
-    callbacks.insert_or_assign(path, callback);
-}
+// void HttpServer::addCallback(std::string path, std::function<void(HttpFile&)> callback)
+// {
+//     callbacks.insert_or_assign(path, callback);
+// }
 
 void HttpServer::addCallbackFormat(Format format, std::function<void(HttpFile&)> callback)
 {
-    callbacks_format.insert_or_assign(format, callback);
+    callbacks_format.emplace_front(
+        std::pair<Format, std::function<void(HttpFile&)>>{format, callback});
+}
+
+int HttpServer::removeCallbackFormat(const Format& format)
+{
+    int removed_count = 0;
+    callbacks_format.remove_if(
+        [&format, &removed_count](const auto& pair)
+        {
+            bool should_remove = pair.first == format;
+            if (should_remove)
+            {
+                ++removed_count;
+            }
+            return should_remove;
+        });
+    return removed_count;
 }
 
 std::string HttpServer::makeHttpHead(int status, std::string_view content,
@@ -335,6 +353,11 @@ int HttpFile::eventGo()
 {
     corutine.resume();
     return httpState;
+}
+
+void HttpFile::closeIt()
+{
+    this->socketfile.closeIt();
 }
 
 HttpFile::HttpFile(int fd, std::function<void(HttpFile&)> a_callback)

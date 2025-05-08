@@ -2,6 +2,8 @@
 #include "corutine.hpp"
 #include <cstring>
 #include <file.h>
+#include <format.h>
+#include <forward_list>
 #include <functional>
 #include <map>
 #include <netinet/in.h>
@@ -11,7 +13,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
-#include <format.h>
 class HttpFile;
 class HttpServer;
 
@@ -43,6 +44,7 @@ class HttpFile : public co_async
     SocketFile socketfile;
     std::function<void(HttpFile&)> callback;
     int eventGo() override;
+    void closeIt();
     HttpFile(int fd, std::function<void(HttpFile&)> callback = nullptr);
     virtual int handle();
     Task<void, void> eventloop();
@@ -69,16 +71,17 @@ class HttpServer : public co_async
     Task<void, void> start();
     Task<void, void> handle = start();
     std::string processRequest(const std::string& request);
-    std::map<std::string, std::function<void(HttpFile&)>> callbacks;
-    std::map<Format, std::function<void(HttpFile&)>> callbacks_format;
+    // std::map<std::string, std::function<void(HttpFile&)>> callbacks;
+    std::forward_list<std::pair<Format, std::function<void(HttpFile&)>>> callbacks_format;
 
   public:
     void autoLoginFile(LocalFiles& static_files);
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
     bool stop();
-    void addCallback(std::string path, std::function<void(HttpFile&)> callback);
+    // void addCallback(std::string path, std::function<void(HttpFile&)> callback);
     void addCallbackFormat(Format format, std::function<void(HttpFile&)> callback);
+    int removeCallbackFormat(const Format& format);
     static std::string makeHttpHead(int status, std::string_view content,
                                     std::string_view content_type = "text/plain;charset=utf-8");
     static std::string judge_file_type(std::string_view path);
