@@ -26,6 +26,7 @@ struct LocalFile
     LocalFile(std::string a_path);
     LocalFile(LocalFile&& move);
 };
+
 struct SocketFile : public co_async
 {
     friend SocketFiles;
@@ -79,6 +80,20 @@ struct SocketFile : public co_async
     };
     // SocketFile(const SocketFile& copy);
 };
+inline struct async_in_out : public co_async
+{
+  private:
+    SocketFile in{STDIN_FILENO};
+    SocketFile out{STDOUT_FILENO};
+    virtual int eventGo();
+
+  public:
+    async_in_out();
+    const std::string_view read_added() const;
+    const std::string_view read_line() const;
+    const std::string_view read_all() const;
+    const void writeFile(std::string file);
+} async_in_out;
 struct LocalFiles
 {
   private:

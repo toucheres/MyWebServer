@@ -1,3 +1,4 @@
+#include "corutine.hpp"
 #include <errno.h>
 #include <fcntl.h>
 #include <file.h>
@@ -354,4 +355,31 @@ SocketFile::CONTEXT::writingFile::writingFile(const std::string& copy)
 {
     this->waitingWrite = copy;
     w_right = waitingWrite.length();
+}
+
+int async_in_out::eventGo()
+{
+    in.eventGo();
+    out.eventGo();
+    return 0;
+}
+async_in_out::async_in_out()
+{
+    Co_Start_Manager::getInstance().manager.add(this);
+}
+const std::string_view async_in_out::read_added() const
+{
+    return in.read_added();
+}
+const std::string_view async_in_out::read_all() const
+{
+    return in.read_all();
+}
+const std::string_view async_in_out::read_line() const
+{
+    return in.read_line();
+}
+const void async_in_out::writeFile(std::string file)
+{
+    return out.writeFile(file);
 }
