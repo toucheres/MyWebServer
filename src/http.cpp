@@ -45,7 +45,7 @@ bool HttpServer::add(int fd)
     }
     else
     {
-        it->second.callback = [this](HttpFile& self)
+        it->second.callback = [this](HttpServerFile& self)
         {
             auto pathIter = self.content.find("path");
             if (pathIter != self.content.end())
@@ -74,13 +74,13 @@ bool HttpServer::add(int fd)
 }
 
 // 新增：从HttpFiles移动的get方法
-HttpFile& HttpServer::get(int fd)
+HttpServerFile& HttpServer::get(int fd)
 {
     return fileMap.at(fd);
 }
 
 // 新增：从HttpFiles移动的getMap方法
-const std::unordered_map<int, HttpFile>& HttpServer::getMap()
+const std::unordered_map<int, HttpServerFile>& HttpServer::getMap()
 {
     return fileMap;
 }
@@ -163,7 +163,7 @@ HttpServer::HttpServer(std::string ip_listening, uint16_t port)
     {
         std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
     }
-    // callbacks["1"] = [](HttpFile& self)
+    // callbacks["1"] = [](HttpServerFile& self)
     // {
     //     const char* response = "HTTP/1.1 200 OK\r\n"
     //                            "Content-Type: text/plain\r\n"
@@ -211,7 +211,7 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
             // std::cout << url_path << '\n';
             // 为该文件路径添加回调
             addCallbackFormat(Format{url_path, Format::Type::same},
-                              [&static_files](HttpFile& file)
+                              [&static_files](HttpServerFile& file)
                               {
                                   auto path = file.content.at("path");
                                   if (path == "/")
@@ -268,15 +268,15 @@ bool HttpServer::stop()
     return true;
 }
 
-// void HttpServer::addCallback(std::string path, std::function<void(HttpFile&)> callback)
+// void HttpServer::addCallback(std::string path, std::function<void(HttpServerFile&)> callback)
 // {
 //     callbacks.insert_or_assign(path, callback);
 // }
 
-void HttpServer::addCallbackFormat(Format format, std::function<void(HttpFile&)> callback)
+void HttpServer::addCallbackFormat(Format format, std::function<void(HttpServerFile&)> callback)
 {
     callbacks_format.emplace_front(
-        std::pair<Format, std::function<void(HttpFile&)>>{format, callback});
+        std::pair<Format, std::function<void(HttpServerFile&)>>{format, callback});
 }
 
 int HttpServer::removeCallbackFormat(const Format& format)
@@ -347,182 +347,4 @@ std::string HttpServer::processRequest(const std::string& request)
 
 void HttpServer::handleClient(int client_fd)
 {
-}
-
-int HttpFile::eventGo()
-{
-    corutine.resume();
-    return httpState;
-}
-
-void HttpFile::closeIt()
-{
-    this->socketfile.closeIt();
-}
-
-HttpFile::HttpFile(int fd, std::function<void(HttpFile&)> a_callback)
-    : socketfile(fd), callback(a_callback)
-{
-}
-
-int HttpFile::handle()
-{
-    callback(*this);
-    // std::cout << "Headers count: " << content.size() << "\n";
-    // std::cout << "path: " << content.at("path") << "\n";
-    reset();
-    return 0;
-}
-
-void HttpFile::reset()
-{
-    content.clear();
-    state = REQUEST_LINE;
-    method.clear();
-    path.clear();
-    version.clear();
-    content_length = 0;
-    body_read = 0;
-    body_buffer.clear();
-}
-
-Task<void, void> HttpFile::eventloop()
-{
-    while (1)
-    {
-        int ret = socketfile.eventGo();
-        if (ret == -1)
-        {
-            httpState = false;
-            co_yield {};
-        }
-
-        if ((!socketfile.handle.context) ||
-            (socketfile.handle.context->fd_state == SocketFile::WRONG))
-        {
-            httpState = false;
-            // std::cout << "连接已关闭: " << socketfile.handle.context->fd << std::endl;
-            co_yield {};
-        }
-        std::string_view tp = socketfile.read_line();
-        switch (state)
-        {
-        case REQUEST_LINE:
-            if (tp.empty())
-            {
-                co_yield {};
-                continue;
-            }
-            if (!tp.empty())
-            {
-                // std::cout << "fd: " << socketfile.handle.context.get()->fd << " 请求行: " << tp;
-
-                size_t first_space = tp.find(' ');
-                size_t second_space = tp.find(' ', first_space + 1);
-
-                if (first_space != std::string_view::npos && second_space != std::string_view::npos)
-                {
-                    method = std::string(tp.substr(0, first_space));
-                    path = std::string(tp.substr(first_space + 1, second_space - first_space - 1));
-                    version =
-                        std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
-
-                    content.try_emplace("method", method);
-                    content.try_emplace("path", path);
-                    content.try_emplace("version", version);
-
-                    state = HEADERS;
-                }
-            }
-            break;
-
-        case HEADERS:
-            if (tp.empty())
-            {
-                co_yield {};
-                continue;
-            }
-            if (tp == "\r\n")
-            {
-                if (method == "POST")
-                {
-                    auto it = content.find("content-length");
-                    if (it != content.end())
-                    {
-                        try
-                        {
-                            content_length = std::stoul(std::string(it->second));
-                            state = BODY;
-                        }
-                        catch (...)
-                        {
-                            content_length = 0;
-                            state = COMPLETE;
-                        }
-                    }
-                    else
-                    {
-                        state = COMPLETE;
-                    }
-                }
-                else
-                {
-                    state = COMPLETE;
-                }
-            }
-            else
-            {
-                size_t index = tp.find(": ");
-                if (index != std::string_view::npos)
-                {
-                    std::string key(tp.substr(0, index));
-                    std::transform(key.begin(), key.end(), key.begin(),
-                                   [](unsigned char c) { return std::tolower(c); });
-
-                    std::string val;
-                    if (index + 2 < tp.length())
-                    {
-                        size_t val_len = tp.length() - (index + 2) - 2;
-                        val = std::string(tp.substr(index + 2, val_len));
-                    }
-
-                    content.try_emplace(key, val);
-                }
-            }
-            break;
-
-        case BODY:
-            if (tp.empty())
-            {
-                co_yield {};
-                continue;
-            }
-            if (body_read < content_length)
-            {
-                body_buffer.append(tp.data(), tp.length());
-                body_read += tp.length();
-
-                if (body_read >= content_length)
-                {
-                    content.try_emplace("postcontent", body_buffer);
-                    state = COMPLETE;
-                }
-            }
-            break;
-
-        case COMPLETE:
-        {
-            if (socketfile.handle.context &&
-                socketfile.handle.context->fd_state != SocketFile::WRONG)
-            {
-                handle();
-                state = REQUEST_LINE;
-            }
-        }
-        break;
-        }
-
-        co_yield {};
-    }
-    co_return;
 }

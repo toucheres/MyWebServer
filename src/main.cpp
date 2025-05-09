@@ -11,7 +11,7 @@ int main()
     auto httpServer = HttpServer{};
     httpServer.addCallbackFormat(
         Format{"/%s", Format::Type::scanf},
-        [&static_files](HttpFile& file)
+        [&static_files](HttpServerFile& file)
         {
             auto parseResult = Format{"/%s", Format::Type::scanf}.parse(file.content.at("path"));
             std::string path = "404.html"; // Default path
@@ -40,7 +40,7 @@ int main()
             }
         });
     httpServer.addCallbackFormat(Format{"/", Format::Type::same},
-                                 [&static_files](HttpFile& file)
+                                 [&static_files](HttpServerFile& file)
                                  {
                                      auto& Localfile = static_files.get("index.html");
                                      std::string_view content = Localfile.read();

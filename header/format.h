@@ -1,3 +1,4 @@
+#pragma once
 #include <string>
 // #include <system_error>
 #include <string_view>

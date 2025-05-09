@@ -1,11 +1,11 @@
 #pragma once
 #include "corutine.hpp"
+#include <httpfile.h>
 #include <cstring>
 #include <file.h>
 #include <format.h>
 #include <forward_list>
 #include <functional>
-#include <map>
 #include <netinet/in.h>
 #include <string>
 #include <sys/fcntl.h>
@@ -13,43 +13,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
-class HttpFile;
+class HttpServerFile;
 class HttpServer;
-
-class HttpFile : public co_async
-{
-    friend HttpServer;
-    // friend HttpAPI; // 修改为正确引用嵌套类
-
-    int httpState = true;
-    void reset();
-    enum ParseState
-    {
-        REQUEST_LINE,
-        HEADERS,
-        BODY,
-        COMPLETE
-    };
-    ParseState state = REQUEST_LINE;
-
-    std::string method;
-    std::string path;
-    std::string version;
-    size_t content_length = 0;
-    size_t body_read = 0;
-    std::string body_buffer;
-
-  public:
-    std::map<std::string, std::string> content;
-    SocketFile socketfile;
-    std::function<void(HttpFile&)> callback;
-    int eventGo() override;
-    void closeIt();
-    HttpFile(int fd, std::function<void(HttpFile&)> callback = nullptr);
-    virtual int handle();
-    Task<void, void> eventloop();
-    Task<void, void> corutine = eventloop();
-};
 
 class HttpServer : public co_async
 {
@@ -58,7 +23,7 @@ class HttpServer : public co_async
     uint16_t port;
     std::string ip_listening;
     bool running;
-    std::unordered_map<int, HttpFile> fileMap; // 从HttpFiles移动过来的fileMap
+    std::unordered_map<int, HttpServerFile> fileMap; // 从HttpFiles移动过来的fileMap
     Co_Manager manager;
     // std::unordered_map<std::string, HttpAPI> callback;
     //  创建套接字
@@ -71,16 +36,16 @@ class HttpServer : public co_async
     Task<void, void> start();
     Task<void, void> handle = start();
     std::string processRequest(const std::string& request);
-    // std::map<std::string, std::function<void(HttpFile&)>> callbacks;
-    std::forward_list<std::pair<Format, std::function<void(HttpFile&)>>> callbacks_format;
+    // std::map<std::string, std::function<void(HttpServerFile&)>> callbacks;
+    std::forward_list<std::pair<Format, std::function<void(HttpServerFile&)>>> callbacks_format;
 
   public:
     void autoLoginFile(LocalFiles& static_files);
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
     bool stop();
-    // void addCallback(std::string path, std::function<void(HttpFile&)> callback);
-    void addCallbackFormat(Format format, std::function<void(HttpFile&)> callback);
+    // void addCallback(std::string path, std::function<void(HttpServerFile&)> callback);
+    void addCallbackFormat(Format format, std::function<void(HttpServerFile&)> callback);
     int removeCallbackFormat(const Format& format);
     static std::string makeHttpHead(int status, std::string_view content,
                                     std::string_view content_type = "text/plain;charset=utf-8");
@@ -89,7 +54,7 @@ class HttpServer : public co_async
 
     // 从HttpFiles移动过来的方法
     bool add(int fd);
-    HttpFile& get(int fd);
-    const std::unordered_map<int, HttpFile>& getMap();
+    HttpServerFile& get(int fd);
+    const std::unordered_map<int, HttpServerFile>& getMap();
     int processFiles(); // 替代原HttpFiles的eventGo
 };
