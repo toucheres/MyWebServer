@@ -62,6 +62,8 @@ struct SocketFile : public co_async
     virtual int eventGo() final;
     const std::string_view read_added() const;
     const std::string_view read_line() const;
+    const std::string_view read_until(
+        const std::string_view delimiter = "\r\n") const; // 添加新方法
     const std::string_view read_all() const;
     const void writeFile(std::string file);
     bool setNonBlocking();
@@ -80,7 +82,7 @@ struct SocketFile : public co_async
     };
     // SocketFile(const SocketFile& copy);
 };
-inline struct async_in_out : public co_async
+struct async_in_out : public co_async
 {
   private:
     SocketFile in{STDIN_FILENO};
@@ -89,11 +91,13 @@ inline struct async_in_out : public co_async
 
   public:
     async_in_out();
-    const std::string_view read_added() const;
-    const std::string_view read_line() const;
-    const std::string_view read_all() const;
-    const void writeFile(std::string file);
-} async_in_out;
+    std::string_view read_added();
+    std::string_view read_line();
+    std::string_view read_all();
+    std::string_view read_until();
+    void writeFile(std::string file);
+    static async_in_out& getInstance();
+};
 struct LocalFiles
 {
   private:

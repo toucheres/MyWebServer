@@ -233,42 +233,99 @@ const std::string_view SocketFile::read_added() const
 
 const std::string_view SocketFile::read_line() const
 {
+    // size_t& r_left = this->handle.get_context()->r_left;
+    // size_t& r_right = this->handle.get_context()->r_right;
+    // if (r_right - r_left <= 1)
+    // {
+    //     return std::string_view{""};
+    // }
+    // else
+    // {
+    //     int fiannl = -1;
+    //     for (size_t i = r_left; i <= r_right - 1; i++)
+    //     {
+    //         if (this->handle.get_context()->content[i] == '\r' &&
+    //             this->handle.get_context()->content[i + 1] == '\n')
+    //         {
+    //             fiannl = i + 1;
+    //             break;
+    //         }
+    //     }
+    //     if (fiannl != -1)
+    //     {
+    //         auto tp = std::string_view(
+    //             &this->handle.get_context()->content[this->handle.get_context()->r_left],
+    //             fiannl - r_left + 1);
+    //         r_left = fiannl + 1;
+    //         return tp;
+    //     }
+    //     else
+    //     {
+    //         return std::string_view{""};
+    //     }
+    // }
+    return read_until("\r\n");
+}
+
+const std::string_view SocketFile::read_all() const
+{
+    return std::string_view(handle.get_context()->content.data(), handle.get_context()->r_right);
+}
+
+const std::string_view SocketFile::read_until(const std::string_view delimiter) const
+{
+    //[bug]有问题，像是pg导致的
     size_t& r_left = this->handle.get_context()->r_left;
     size_t& r_right = this->handle.get_context()->r_right;
-    if (r_right - r_left <= 1)
+
+    // 确保有足够的数据可读
+    if (r_right - r_left < delimiter.length())
     {
         return std::string_view{""};
     }
     else
     {
-        int fiannl = -1;
-        for (size_t i = r_left; i <= r_right - 1; i++)
+        size_t found_pos = std::string::npos;
+
+        // 在缓冲区中查找指定的结束符
+        for (size_t i = r_left; i <= r_right - delimiter.length(); i++)
         {
-            if (this->handle.get_context()->content[i] == '\r' &&
-                this->handle.get_context()->content[i + 1] == '\n')
+            bool match = true;
+            for (size_t j = 0; j < delimiter.length(); j++)
             {
-                fiannl = i + 1;
+                if (this->handle.get_context()->content[i + j] != delimiter[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match)
+            {
+                found_pos = i;
                 break;
             }
         }
-        if (fiannl != -1)
+
+        if (found_pos != std::string::npos)
         {
-            auto tp = std::string_view(
-                &this->handle.get_context()->content[this->handle.get_context()->r_left],
-                fiannl - r_left + 1);
-            r_left = fiannl + 1;
-            return tp;
+            // 计算返回的字符串长度（包括结束符）
+            size_t result_length = found_pos - r_left + delimiter.length();
+
+            // 创建包含结束符的字符串视图
+            auto result =
+                std::string_view(&this->handle.get_context()->content[r_left], result_length);
+
+            // 更新读取位置
+            r_left = found_pos + delimiter.length();
+
+            return result;
         }
         else
         {
             return std::string_view{""};
         }
     }
-}
-
-const std::string_view SocketFile::read_all() const
-{
-    return std::string_view(handle.get_context()->content.data(), handle.get_context()->r_right);
 }
 
 const void SocketFile::writeFile(const std::string file)
@@ -361,25 +418,36 @@ int async_in_out::eventGo()
 {
     in.eventGo();
     out.eventGo();
+    // std::cout << "in now:" << in.read_all();
     return 0;
 }
 async_in_out::async_in_out()
 {
     Co_Start_Manager::getInstance().manager.add(this);
 }
-const std::string_view async_in_out::read_added() const
+std::string_view async_in_out::read_added()
 {
     return in.read_added();
 }
-const std::string_view async_in_out::read_all() const
+std::string_view async_in_out::read_all()
 {
     return in.read_all();
 }
-const std::string_view async_in_out::read_line() const
+std::string_view async_in_out::read_until()
 {
-    return in.read_line();
+    return in.read_until("\n");
 }
-const void async_in_out::writeFile(std::string file)
+std::string_view async_in_out::read_line()
+{
+    return in.read_until("\n");
+}
+void async_in_out::writeFile(std::string file)
 {
     return out.writeFile(file);
+}
+
+async_in_out& async_in_out::getInstance()
+{
+    static async_in_out instance;
+    return instance;
 }
