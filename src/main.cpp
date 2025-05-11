@@ -13,9 +13,9 @@ int main()
     auto httpServer = HttpServer{};
     httpServer.addCallbackFormat(
         Format{"/%s", Format::Type::scanf},
-        [&static_files](HttpServerFile& file)
+        [&static_files](serverFile& file)
         {
-            auto parseResult = Format{"/%s", Format::Type::scanf}.parse(file.content.at("path"));
+            auto parseResult = Format{"/%s", Format::Type::scanf}.parse(file.getContent() .at("path"));
             std::string path = "404.html"; // Default path
             if (parseResult && !parseResult->empty() &&
                 std::holds_alternative<std::string>((*parseResult)[0]))
@@ -28,8 +28,8 @@ int main()
             {
                 std::string head =
                     HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
-                file.socketfile.writeFile(std::move(head));
-                file.socketfile.writeFile(std::move(std::string(content)));
+                file.write(std::move(head));
+                file.write(std::move(std::string(content)));
             }
             else
             {
@@ -37,12 +37,12 @@ int main()
                 std::string head =
                     HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
                 // std::cout << head << '\n';
-                file.socketfile.writeFile(std::move(head));
-                file.socketfile.writeFile(std::move(std::string(content)));
+                file.write(std::move(head));
+                file.write(std::move(std::string(content)));
             }
         });
     httpServer.addCallbackFormat(Format{"/", Format::Type::same},
-                                 [&static_files](HttpServerFile& file)
+                                 [&static_files](serverFile& file)
                                  {
                                      auto& Localfile = static_files.get("index.html");
                                      std::string_view content = Localfile.read();
@@ -54,8 +54,8 @@ int main()
                                              HttpServer::judge_file_type("index.html"));
                                          // std::cout << head;
                                          // std::cout << head << '\n';
-                                         file.socketfile.writeFile(std::move(head));
-                                         file.socketfile.writeFile(std::move(std::string(content)));
+                                         file.write(std::move(head));
+                                         file.write(std::move(std::string(content)));
                                      }
                                  });
     coManager.manager.add(httpServer);

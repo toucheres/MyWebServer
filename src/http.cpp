@@ -211,9 +211,9 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
             // std::cout << url_path << '\n';
             // 为该文件路径添加回调
             addCallbackFormat(Format{url_path, Format::Type::same},
-                              [&static_files](HttpServerFile& file)
+                              [&static_files](serverFile& file)
                               {
-                                  auto path = file.content.at("path");
+                                  auto path = file.getContent().at("path");
                                   if (path == "/")
                                   {
                                       path = "index.html";
@@ -230,8 +230,10 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                                       std::string head = HttpServer::makeHttpHead(
                                           200, content, HttpServer::judge_file_type(path));
                                       // std::cout << head << '\n';
-                                      file.socketfile.writeFile(std::move(head));
-                                      file.socketfile.writeFile(std::move(std::string(content)));
+                                      file.write(std::move(head));
+                                      file.write(std::move(std::string(content)));
+                                      //   file.socketfile.writeFile(std::move(head));
+                                      //   file.socketfile.writeFile(std::move(std::string(content)));
                                   }
                               });
         }
@@ -273,10 +275,10 @@ bool HttpServer::stop()
 //     callbacks.insert_or_assign(path, callback);
 // }
 
-void HttpServer::addCallbackFormat(Format format, std::function<void(HttpServerFile&)> callback)
+void HttpServer::addCallbackFormat(Format format, std::function<void(serverFile&)> callback)
 {
     callbacks_format.emplace_front(
-        std::pair<Format, std::function<void(HttpServerFile&)>>{format, callback});
+        std::pair<Format, std::function<void(serverFile&)>>{format, callback});
 }
 
 int HttpServer::removeCallbackFormat(const Format& format)

@@ -2,7 +2,7 @@
 #include "corutine.hpp"
 #include "file.h"
 #include "httpServerFile.h"
-class WebSocketFile : public co_async
+class WebSocketFile : public co_async, public serverFile
 {
     SocketFile socketfile;
     int webSocketState = true;

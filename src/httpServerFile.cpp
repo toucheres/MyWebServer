@@ -24,6 +24,16 @@ int HttpServerFile::handle()
     return 0;
 }
 
+void HttpServerFile::write(std::string file)
+{
+    return this->socketfile.writeFile(file);
+}
+
+const std::map<std::string, std::string>& HttpServerFile::getContent()
+{
+    return content;
+}
+
 void HttpServerFile::reset()
 {
     content.clear();
