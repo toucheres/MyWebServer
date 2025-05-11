@@ -52,6 +52,7 @@ int main()
                                          std::string head = HttpServer::makeHttpHead(
                                              200, content,
                                              HttpServer::judge_file_type("index.html"));
+                                         // std::cout << head;
                                          // std::cout << head << '\n';
                                          file.socketfile.writeFile(std::move(head));
                                          file.socketfile.writeFile(std::move(std::string(content)));
@@ -59,7 +60,7 @@ int main()
                                  });
     coManager.manager.add(httpServer);
     coManager.manager.add(con);
-    coManager.loopTime = std::chrono::nanoseconds(100000000);
+    coManager.loopTime = std::chrono::nanoseconds(0);
     coManager.start();
     return 0;
 }
