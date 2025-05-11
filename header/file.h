@@ -61,6 +61,7 @@ struct SocketFile : public co_async
     Task_Away<CONTEXT> handle = eventfun;
     virtual int eventGo() final;
     const std::string_view read_added() const;
+    const std::string_view read_num(size_t num) const;
     const std::string_view read_line() const;
     const std::string_view read_until(
         const std::string_view delimiter = "\r\n") const; // 添加新方法

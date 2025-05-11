@@ -98,6 +98,7 @@ void SocketFile::closeIt()
     handle.get_context()->fd_state = WRONG;
     this->eventGo();
 }
+
 Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
 {
     // int loop = 0;
@@ -229,6 +230,17 @@ const std::string_view SocketFile::read_added() const
                             handle.get_context()->r_right - handle.get_context()->r_left);
     handle.get_context()->r_left = handle.get_context()->r_right;
     return result;
+}
+
+const std::string_view SocketFile::read_num(size_t num) const
+{
+    if (handle.get_context()->r_left - handle.get_context()->r_right >= num)
+    {
+        return std::string_view{handle.get_context()->content.data() + handle.get_context()->r_left,
+                                num};
+        handle.get_context()->r_left += num;
+    }
+    return "";
 }
 
 const std::string_view SocketFile::read_line() const
