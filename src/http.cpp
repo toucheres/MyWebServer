@@ -1,8 +1,10 @@
 #include "http.h"
 #include "file.h"
+#include "httpServerFile.h"
 #include <errno.h>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <string_view>
 #include <unistd.h>
 int HttpServer::eventGo()
@@ -19,7 +21,7 @@ int HttpServer::processFiles()
 
     for (auto& file : fileMap)
     {
-        int ret = file.second.eventGo();
+        int ret = file.second->eventGo();
         if (ret == false)
         {
             toRemove.push_back(file.first); // 添加到移除列表
@@ -37,53 +39,56 @@ int HttpServer::processFiles()
 // 新增：从HttpFiles移动的add方法
 bool HttpServer::add(int fd)
 {
-    auto [it, inserted] = this->fileMap.try_emplace(fd, fd);
+    std::shared_ptr<HttpServerFile> ptr = std::make_shared<HttpServerFile>(fd);
+    auto [it, inserted] = this->fileMap.try_emplace(fd, ptr);
     if (!inserted)
     {
-        it->second = fd; // 或更新现有值
+        it->second = ptr; // 或更新现有值
         return false;
     }
     else
     {
-        it->second.callback = [this](HttpServerFile& self)
-        {
-            auto pathIter = self.content.find("path");
-            if (pathIter != self.content.end())
+        it->second->setCallback(
+            [this](serverFile& self)
             {
-                // std::cout << "---" << pathIter->second << "---\n";
-                // auto cbIter = this->callbacks.find(pathIter->second);
-                // if (cbIter != this->callbacks.end())
-                // {
-                //     cbIter->second(self);
-                // }
-                // else
-                // {
-                for (auto call = callbacks_format.begin(); call != callbacks_format.end(); call++)
+                auto pathIter = self.getContent().find("path");
+                if (pathIter != self.getContent().end())
                 {
-                    if (call->first == pathIter->second)
+                    // std::cout << "---" << pathIter->second << "---\n";
+                    // auto cbIter = this->callbacks.find(pathIter->second);
+                    // if (cbIter != this->callbacks.end())
+                    // {
+                    //     cbIter->second(self);
+                    // }
+                    // else
+                    // {
+                    for (auto call = callbacks_format.begin(); call != callbacks_format.end();
+                         call++)
                     {
-                        call->second(self);
-                        break;
+                        if (call->first == pathIter->second)
+                        {
+                            call->second(self);
+                            break;
+                        }
                     }
+                    // }
                 }
-                // }
-            }
-        };
+            });
     }
     return true;
 }
 
-// 新增：从HttpFiles移动的get方法
-HttpServerFile& HttpServer::get(int fd)
-{
-    return fileMap.at(fd);
-}
+// // 新增：从HttpFiles移动的get方法
+// HttpServerFile& HttpServer::get(int fd)
+// {
+//     return fileMap.at(fd);
+// }
 
-// 新增：从HttpFiles移动的getMap方法
-const std::unordered_map<int, HttpServerFile>& HttpServer::getMap()
-{
-    return fileMap;
-}
+// // 新增：从HttpFiles移动的getMap方法
+// const std::unordered_map<int, HttpServerFile>& HttpServer::getMap()
+// {
+//     return fileMap;
+// }
 
 int HttpServer::makeSocket()
 {

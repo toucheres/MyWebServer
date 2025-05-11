@@ -1,12 +1,12 @@
 #pragma once
 #include "corutine.hpp"
 #include "serverFile.h"
-#include <httpServerFile.h>
 #include <cstring>
 #include <file.h>
 #include <format.h>
 #include <forward_list>
 #include <functional>
+#include <httpServerFile.h>
 #include <netinet/in.h>
 #include <string>
 #include <sys/fcntl.h>
@@ -24,7 +24,7 @@ class HttpServer : public co_async
     uint16_t port;
     std::string ip_listening;
     bool running;
-    std::unordered_map<int, HttpServerFile> fileMap; // 从HttpFiles移动过来的fileMap
+    std::unordered_map<int, std::shared_ptr<serverFile>> fileMap; // 从HttpFiles移动过来的fileMap
     Co_Manager manager;
     // std::unordered_map<std::string, HttpAPI> callback;
     //  创建套接字
@@ -55,7 +55,7 @@ class HttpServer : public co_async
 
     // 从HttpFiles移动过来的方法
     bool add(int fd);
-    HttpServerFile& get(int fd);
-    const std::unordered_map<int, HttpServerFile>& getMap();
+    // HttpServerFile& get(int fd);
+    // const std::unordered_map<int, HttpServerFile>& getMap();
     int processFiles(); // 替代原HttpFiles的eventGo
 };

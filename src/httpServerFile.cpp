@@ -15,6 +15,11 @@ HttpServerFile::HttpServerFile(int fd, std::function<void(HttpServerFile&)> a_ca
 {
 }
 
+void HttpServerFile::setCallback(std::function<void(serverFile&)> a_callback)
+{
+    callback = a_callback;
+}
+
 int HttpServerFile::handle()
 {
     callback(*this);
