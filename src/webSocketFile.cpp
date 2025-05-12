@@ -156,38 +156,17 @@ const std::map<std::string, std::string>& WebSocketFile::getContent()
     static std::map<std::string, std::string> nothing;
     return nothing;
 }
-WebSocketFile::WebSocketFile(HttpServerFile& origin)
+WebSocketFile::WebSocketFile(HttpServerFile&& origin)
     : socketfile(std::move(origin.socketfile)), webSocketState(true)
 {
+    content["path"] = origin.content.at("path");
 }
 
-void WebSocketFile::upgradefrom(HttpServerFile& http)
+void WebSocketFile::upgradefrom(HttpServerFile&& origin)
 {
-    // 检查必要的WebSocket握手头部
-    auto upgrade_it = http.content.find("upgrade");
-    auto connection_it = http.content.find("connection");
-    auto key_it = http.content.find("sec-websocket-key");
-
-    if (upgrade_it == http.content.end() || connection_it == http.content.end() ||
-        key_it == http.content.end() || upgrade_it->second != "websocket")
-    {
-        webSocketState = false;
-        return;
-    }
-
-    // 这里应该计算正确的Sec-WebSocket-Accept值
-    // 在实际应用中需要使用: base64(sha1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
-    // 简化示例中使用固定值
-    std::string accept_key = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
-
-    // 发送WebSocket握手响应
-    std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
-                           "Upgrade: websocket\r\n"
-                           "Connection: Upgrade\r\n"
-                           "Sec-WebSocket-Accept: " +
-                           accept_key + "\r\n\r\n";
-
-    socketfile.writeFile(response);
+    socketfile = std::move(origin.socketfile);
+    webSocketState = true;
+    content["path"] = origin.content.at("path");
 }
 
 int WebSocketFile::eventGo()
@@ -253,4 +232,8 @@ Task<void, void> WebSocketFile::eventloop()
     }
 
     co_return;
+}
+int WebSocketFile::getStatus()
+{
+    return 0;
 }

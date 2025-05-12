@@ -28,21 +28,23 @@ class HttpServerFile : public serverFile
         COMPLETE
     };
     ParseState state = REQUEST_LINE;
-
+    // for corutin
     std::string method;
     std::string path;
     std::string version;
     size_t content_length = 0;
     size_t body_read = 0;
     std::string body_buffer;
+
     std::map<std::string, std::string> content;
     SocketFile socketfile;
     std::function<void(HttpServerFile&)> callback;
     int eventGo() override;
 
   public:
-
     void closeIt();
+    virtual int getStatus() override final;
+    ~HttpServerFile() = default;
     HttpServerFile(int fd, std::function<void(HttpServerFile&)> callback = nullptr);
     virtual void setCallback(std::function<void(serverFile&)> callback) final;
     virtual int handle();

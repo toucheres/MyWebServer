@@ -10,6 +10,11 @@ void HttpServerFile::closeIt()
     this->socketfile.closeIt();
 }
 
+int HttpServerFile::getStatus()
+{
+    return this->httpState;
+}
+
 HttpServerFile::HttpServerFile(int fd, std::function<void(HttpServerFile&)> a_callback)
     : socketfile(fd), callback(a_callback)
 {

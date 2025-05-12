@@ -11,6 +11,7 @@ class co_async
 {
   public:
     virtual int eventGo() = 0;
+    virtual ~co_async() = default;
 };
 // 泛型协程任务，可以返回任意类型T的值
 template <typename RET = void, typename YIELD = void> class Task
@@ -801,10 +802,11 @@ class Co_Start_Manager
         static auto instance = Co_Start_Manager{};
         return instance;
     }
-    private:
-      Co_Start_Manager() = default;
-      Co_Start_Manager(Co_Start_Manager&&) = delete;
-      Co_Start_Manager(const Co_Start_Manager&) = delete;
-      Co_Start_Manager& operator=(Co_Start_Manager&&) = delete;
-      Co_Start_Manager& operator=(const Co_Start_Manager&) = delete;
+
+  private:
+    Co_Start_Manager() = default;
+    Co_Start_Manager(Co_Start_Manager&&) = delete;
+    Co_Start_Manager(const Co_Start_Manager&) = delete;
+    Co_Start_Manager& operator=(Co_Start_Manager&&) = delete;
+    Co_Start_Manager& operator=(const Co_Start_Manager&) = delete;
 };
