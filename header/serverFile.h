@@ -6,9 +6,10 @@
 class serverFile : public co_async
 {
   public:
-    virtual const std::map<std::string, std::string>& getContent() = 0;
+    virtual const std::map<std::string, std::string>& getContent() const = 0;
     virtual void write(std::string file) = 0;
     virtual void setCallback(std::function<void(serverFile&)> callback) = 0;
     virtual int getStatus() = 0;
+    virtual int reset() = 0;
     virtual ~serverFile() = default;
 };

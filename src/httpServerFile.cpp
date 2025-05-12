@@ -15,7 +15,7 @@ int HttpServerFile::getStatus()
     return this->httpState;
 }
 
-HttpServerFile::HttpServerFile(int fd, std::function<void(HttpServerFile&)> a_callback)
+HttpServerFile::HttpServerFile(int fd, std::function<void(serverFile&)> a_callback)
     : socketfile(fd), callback(a_callback)
 {
 }
@@ -30,7 +30,7 @@ int HttpServerFile::handle()
     callback(*this);
     // std::cout << "Headers count: " << content.size() << "\n";
     // std::cout << "path: " << content.at("path") << "\n";
-    reset();
+    // reset();
     return 0;
 }
 
@@ -39,12 +39,12 @@ void HttpServerFile::write(std::string file)
     return this->socketfile.writeFile(file);
 }
 
-const std::map<std::string, std::string>& HttpServerFile::getContent()
+const std::map<std::string, std::string>& HttpServerFile::getContent() const
 {
     return content;
 }
 
-void HttpServerFile::reset()
+int HttpServerFile::reset()
 {
     content.clear();
     state = REQUEST_LINE;
@@ -54,6 +54,7 @@ void HttpServerFile::reset()
     content_length = 0;
     body_read = 0;
     body_buffer.clear();
+    return 0;
 }
 
 Task<void, void> HttpServerFile::eventloop()

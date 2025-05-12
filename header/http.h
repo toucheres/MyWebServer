@@ -24,7 +24,6 @@ class HttpServer : public co_async
     uint16_t port;
     std::string ip_listening;
     bool running;
-    std::unordered_map<int, std::shared_ptr<serverFile>> fileMap; // 从HttpFiles移动过来的fileMap
     Co_Manager manager;
     // std::unordered_map<std::string, HttpAPI> callback;
     //  创建套接字
@@ -41,6 +40,7 @@ class HttpServer : public co_async
     std::forward_list<std::pair<Format, std::function<void(serverFile&)>>> callbacks_format;
 
   public:
+    std::unordered_map<int, std::shared_ptr<serverFile>> fileMap;
     void autoLoginFile(LocalFiles& static_files);
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();

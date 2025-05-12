@@ -1,4 +1,6 @@
 #include "httpServerFile.h"
+#include "serverFile.h"
+#include <iostream>
 #include <string>
 #include <webSocketFile.h>
 
@@ -151,15 +153,19 @@ std::string parseWebSocketFrame(const std::string& frame)
 void WebSocketFile::write(std::string content)
 {
 }
-const std::map<std::string, std::string>& WebSocketFile::getContent()
+void WebSocketFile::setCallback(std::function<void(serverFile&)> a_callback)
 {
-    static std::map<std::string, std::string> nothing;
-    return nothing;
+    this->callback = std::move(a_callback);
+}
+const std::map<std::string, std::string>& WebSocketFile::getContent() const
+{
+    return this->content;
 }
 WebSocketFile::WebSocketFile(HttpServerFile&& origin)
     : socketfile(std::move(origin.socketfile)), webSocketState(true)
 {
     content["path"] = origin.content.at("path");
+    this->setCallback(std::move(origin.callback));
 }
 
 void WebSocketFile::upgradefrom(HttpServerFile&& origin)
@@ -169,6 +175,54 @@ void WebSocketFile::upgradefrom(HttpServerFile&& origin)
     content["path"] = origin.content.at("path");
 }
 
+bool WebSocketFile::shouldbeUpdataToWS(const serverFile& httpfile)
+{
+    // 获取HTTP请求头
+    const auto& headers = httpfile.getContent();
+
+    // 检查是否是GET请求，WebSocket升级必须使用GET
+    auto method_it = headers.find("method");
+    if (method_it == headers.end() || method_it->second != "GET")
+        return false;
+
+    // 检查Connection头是否包含"Upgrade"
+    auto connection_it = headers.find("connection");
+    if (connection_it == headers.end())
+        return false;
+
+    // Connection头可能有多个值，以逗号分隔，需要检查其中是否包含"upgrade"（不区分大小写）
+    std::string connection_value = connection_it->second;
+    std::transform(connection_value.begin(), connection_value.end(), connection_value.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (connection_value.find("upgrade") == std::string::npos)
+        return false;
+
+    // 检查Upgrade头是否为"websocket"
+    auto upgrade_it = headers.find("upgrade");
+    if (upgrade_it == headers.end())
+        return false;
+
+    std::string upgrade_value = upgrade_it->second;
+    std::transform(upgrade_value.begin(), upgrade_value.end(), upgrade_value.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (upgrade_value != "websocket")
+        return false;
+
+    // 检查Sec-WebSocket-Key头是否存在
+    auto key_it = headers.find("sec-websocket-key");
+    if (key_it == headers.end() || key_it->second.empty())
+        return false;
+
+    // 检查Sec-WebSocket-Version头是否为13
+    auto version_it = headers.find("sec-websocket-version");
+    if (version_it == headers.end() || version_it->second != "13")
+        return false;
+
+    // 所有条件都满足，可以升级到WebSocket
+    return true;
+}
 int WebSocketFile::eventGo()
 {
     corutin.resume();
@@ -197,6 +251,7 @@ Task<void, void> WebSocketFile::eventloop()
         std::string_view data = socketfile.read_added();
         if (!data.empty())
         {
+            // std::cout << data << '\n';
             std::string frame_data(data);
             std::string message = parseWebSocketFrame(frame_data);
 
@@ -234,6 +289,10 @@ Task<void, void> WebSocketFile::eventloop()
     co_return;
 }
 int WebSocketFile::getStatus()
+{
+    return 0;
+}
+int WebSocketFile::reset()
 {
     return 0;
 }
