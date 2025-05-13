@@ -123,10 +123,10 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                          context->content.size() - context->r_right);
         if (n > 0)
         {
-            std::cout << "socketget: " << "fd: " << context->fd
-                      << std::string_view{context->content.data() + context->r_right,
-                                          static_cast<size_t>(n)}
-                      << '\n';
+            // std::cout << "socketget: " << "fd: " << context->fd
+            //           << std::string_view{context->content.data() + context->r_right,
+            //                               static_cast<size_t>(n)}
+            //           << '\n';
             context->r_right += n;
             continue;
         }
@@ -165,6 +165,13 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                 context->fd,
                 &context->waitingWrites.front().waitingWrite[context->waitingWrites.front().w_left],
                 context->waitingWrites.front().w_right - context->waitingWrites.front().w_left);
+            // std::cout << "writtennum : " << written << '\n';
+            // std::cout << "written: "
+            //           << std::string_view{&context->waitingWrites.front()
+            //                                    .waitingWrite[context->waitingWrites.front().w_left],
+            //                               context->waitingWrites.front().w_right -
+            //                                   context->waitingWrites.front().w_left}
+            //           << '\n';
             if (written == -1)
             {
                 // 处理写入错误
@@ -238,9 +245,10 @@ const std::string_view SocketFile::read_num(size_t num) const
 {
     if (handle.get_context()->r_left - handle.get_context()->r_right >= num)
     {
-        return std::string_view{handle.get_context()->content.data() + handle.get_context()->r_left,
-                                num};
+        auto tp = std::string_view{
+            handle.get_context()->content.data() + handle.get_context()->r_left, num};
         handle.get_context()->r_left += num;
+        return tp;
     }
     return "";
 }

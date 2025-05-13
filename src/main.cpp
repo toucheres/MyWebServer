@@ -5,7 +5,6 @@
 #include <file.h>
 #include <http.h>
 #include <iostream>
-#include <memory>
 #include <openssl/bio.h>    // 包含 BIO 相关函数
 #include <openssl/buffer.h> // 包含 BUF_MEM 结构体
 #include <openssl/evp.h>
@@ -99,6 +98,7 @@ int main()
                 {
                     socketfile.write("http not updata to websocket\r\n");
                 }
+                return;
             }
             else if (socketfile.getAgreementType() == Agreement::WebSocket)
             {
@@ -106,9 +106,12 @@ int main()
                 auto res = std::move(WebSocketFile::createWebSocketFrame(
                     true, WebSocketFile::TEXT,
                     "socket readed!:" + socketfile.getContent().at("path")));
+                std::cout << "callbacked!" << '\n';
                 socketfile.write(res);
                 socketfile.reset();
+                return;
             }
+            return;
         });
     coManager.manager.add(httpServer);
     coManager.manager.add(con);

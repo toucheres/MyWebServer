@@ -1,5 +1,4 @@
 #include <httpServerFile.h>
-#include <iostream>
 #include <string>
 #include <webSocketFile.h>
 
@@ -51,14 +50,14 @@ int HttpServerFile::handle()
 void HttpServerFile::write(std::string file)
 {
     // 根据协议类型处理不同的写入逻辑
-    if (protocolType == Agreement::WebSocket) {
-        // WebSocket写入逻辑 - 使用WebSocketFile的静态方法
-        std::string frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::TEXT, file);
-        this->socketfile.writeFile(frame);
-    } else {
-        // HTTP原始写入
-        return this->socketfile.writeFile(file);
-    }
+    // if (protocolType == Agreement::WebSocket) {
+    //     // WebSocket写入逻辑 - 使用WebSocketFile的静态方法
+    //     std::string frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::TEXT, file);
+    //     this->socketfile.writeFile(frame);
+    // } else {
+    // HTTP原始写入
+    return this->socketfile.writeFile(file);
+    // }
 }
 
 const std::map<std::string, std::string>& HttpServerFile::getContent() const
@@ -68,7 +67,8 @@ const std::map<std::string, std::string>& HttpServerFile::getContent() const
 
 int HttpServerFile::reset()
 {
-    if (protocolType == Agreement::HTTP) {
+    if (protocolType == Agreement::HTTP)
+    {
         // 重置HTTP协议状态
         content.clear();
         state = REQUEST_LINE;
@@ -78,18 +78,19 @@ int HttpServerFile::reset()
         content_length = 0;
         body_read = 0;
         body_buffer.clear();
-    } 
+    }
     // WebSocket协议不需要清空content
-    
+
     return 0;
 }
 
 bool HttpServerFile::upgradeProtocol(int newProtocol)
 {
-    if (newProtocol == protocolType) {
+    if (newProtocol == protocolType)
+    {
         return true; // 已经是该协议，无需切换
     }
-    
+
     protocolType = newProtocol; // 现在直接修改基类的protocolType
     return resetCorutine();
 }
@@ -97,11 +98,16 @@ bool HttpServerFile::upgradeProtocol(int newProtocol)
 bool HttpServerFile::resetCorutine()
 {
     // 根据当前协议类型选择合适的协程
-    if (protocolType == Agreement::HTTP) {
+    if (protocolType == Agreement::HTTP)
+    {
         corutine = httpEventloop();
-    } else if (protocolType == Agreement::WebSocket) {
+    }
+    else if (protocolType == Agreement::WebSocket)
+    {
         corutine = wsEventloop();
-    } else {
+    }
+    else
+    {
         return false;
     }
     return true;
@@ -125,7 +131,7 @@ Task<void, void> HttpServerFile::httpEventloop()
             fileState = false;
             co_yield {};
         }
-        
+
         std::string_view tp = socketfile.read_line();
         switch (state)
         {
@@ -247,9 +253,31 @@ Task<void, void> HttpServerFile::httpEventloop()
     co_return;
 }
 
-// WebSocket协议的事件循环 (从WebSocketFile的eventloop移植)
+// WebSocket协议的事件循环 - 改进版，使用状态机模式
 Task<void, void> HttpServerFile::wsEventloop()
 {
+    // 定义WebSocket解析状态
+    enum ParseState
+    {
+        WAITING_HEADER,
+        WAITING_LENGTH,
+        WAITING_MASK,
+        WAITING_PAYLOAD
+    };
+
+    ParseState state = WAITING_HEADER;
+
+    // 解析状态相关变量
+    bool fin = false;
+    uint8_t opcode = 0;
+    bool masked = false;
+    size_t payload_len = 0;
+    size_t header_size = 2;
+    size_t length_bytes_needed = 0;
+    std::array<uint8_t, 4> mask_key = {0, 0, 0, 0};
+    std::string payload;
+    std::string frame_data;
+
     while (fileState)
     {
         int ret = socketfile.eventGo();
@@ -266,45 +294,209 @@ Task<void, void> HttpServerFile::wsEventloop()
             co_yield {};
         }
 
-        // 读取并处理WebSocket数据
-        std::string_view data = socketfile.read_added();
-        if (!data.empty())
+        // 根据当前状态处理数据
+        switch (state)
         {
-            std::string frame_data(data);
-            std::string message = WebSocketFile::parseWebSocketFrame(frame_data);
-
-            if (!message.empty())
+        case WAITING_HEADER:
+        {
+            // 精确读取2字节的帧头
+            std::string_view header_bytes = socketfile.read_num(2);
+            if (header_bytes.size() < 2)
             {
-                // 检查是否是控制帧
-                uint8_t opcode = frame_data[0] & 0x0F;
+                co_yield {};
+                continue;
+            }
 
-                if (opcode == WebSocketFile::CLOSE)
+            // 保存帧数据
+            frame_data = std::string(header_bytes);
+
+            // 解析基本帧头
+            fin = (header_bytes[0] & 0x80) != 0;
+            opcode = header_bytes[0] & 0x0F;
+            masked = (header_bytes[1] & 0x80) != 0;
+            uint8_t payload_len_initial = header_bytes[1] & 0x7F;
+
+            // 根据载荷长度确定下一步
+            if (payload_len_initial < 126)
+            {
+                payload_len = payload_len_initial;
+                header_size = 2;
+                state = masked ? WAITING_MASK : WAITING_PAYLOAD;
+            }
+            else if (payload_len_initial == 126)
+            {
+                length_bytes_needed = 2;
+                state = WAITING_LENGTH;
+            }
+            else // payload_len_initial == 127
+            {
+                length_bytes_needed = 8;
+                state = WAITING_LENGTH;
+            }
+            break;
+        }
+
+        case WAITING_LENGTH:
+        {
+            // 精确读取扩展长度字段
+            std::string_view length_bytes = socketfile.read_num(length_bytes_needed);
+            if (length_bytes.size() < length_bytes_needed)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(length_bytes);
+
+            // 解析实际长度
+            if (length_bytes_needed == 2)
+            {
+                payload_len = ((static_cast<uint16_t>(length_bytes[0]) << 8) |
+                               static_cast<uint8_t>(length_bytes[1]));
+            }
+            else // length_bytes_needed == 8
+            {
+                payload_len = 0;
+                for (int i = 0; i < 8; ++i)
                 {
-                    // 关闭帧，回应关闭并终止连接
+                    payload_len = (payload_len << 8) | static_cast<uint8_t>(length_bytes[i]);
+                }
+            }
+
+            state = masked ? WAITING_MASK : WAITING_PAYLOAD;
+            break;
+        }
+
+        case WAITING_MASK:
+        {
+            // 精确读取4字节掩码
+            std::string_view mask_bytes = socketfile.read_num(4);
+            if (mask_bytes.size() < 4)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(mask_bytes);
+
+            // 保存掩码键值
+            for (int i = 0; i < 4; ++i)
+            {
+                mask_key[i] = static_cast<uint8_t>(mask_bytes[i]);
+            }
+
+            state = WAITING_PAYLOAD;
+            break;
+        }
+
+        case WAITING_PAYLOAD:
+        {
+            // 检查是否有有效载荷
+            if (payload_len == 0)
+            {
+                // 没有有效载荷，直接处理帧
+                switch (opcode)
+                {
+                case WebSocketFile::CLOSE:
+                {
+                    // 回应关闭帧并终止连接
                     std::string close_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::CLOSE, "");
                     socketfile.writeFile(close_frame);
                     fileState = false;
+                    break;
                 }
-                else if (opcode == WebSocketFile::PING)
+                case WebSocketFile::PING:
                 {
-                    // Ping帧，回应Pong
-                    std::string pong_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::PONG, message);
+                    // 回应Ping帧
+                    std::string pong_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::PONG, "");
                     socketfile.writeFile(pong_frame);
+                    break;
                 }
-                else if (opcode == WebSocketFile::TEXT || opcode == WebSocketFile::BINARY)
-                {
-                    // 文本或二进制帧，调用回调
-                    if (callback) {
-                        content["message"] = message;
-                        callback(*this);
-                    } else {
-                        // 如果没有回调，简单回显
-                        std::string response = "Echo: " + message;
-                        std::string response_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::TEXT, response);
-                        socketfile.writeFile(response_frame);
-                    }
+                default:
+                    break;
                 }
+
+                // 重置状态，准备处理下一帧
+                state = WAITING_HEADER;
+                frame_data.clear();
+                break;
             }
+
+            // 精确读取有效载荷数据
+            std::string_view payload_bytes = socketfile.read_num(payload_len);
+            if (payload_bytes.size() < payload_len)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(payload_bytes);
+
+            // 解码有效载荷
+            payload.clear();
+            payload.reserve(payload_len);
+
+            for (size_t i = 0; i < payload_len; ++i)
+            {
+                char byte = payload_bytes[i];
+                if (masked)
+                {
+                    byte ^= mask_key[i % 4];
+                }
+                payload.push_back(byte);
+            }
+
+            // 处理完整的帧
+            switch (opcode)
+            {
+            case WebSocketFile::CLOSE:
+            {
+                // 回应关闭帧并终止连接
+                std::string close_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::CLOSE, "");
+                socketfile.writeFile(close_frame);
+                fileState = false;
+                break;
+            }
+            case WebSocketFile::PING:
+            {
+                // 回应Ping帧
+                std::string pong_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::PONG, payload);
+                socketfile.writeFile(pong_frame);
+                break;
+            }
+            case WebSocketFile::TEXT:
+            case WebSocketFile::BINARY:
+            {
+                // 更新内容
+                content["message"] = payload;
+                content["type"] = (opcode == WebSocketFile::TEXT) ? "text" : "binary";
+
+                // 如果设置了回调，则调用
+                if (callback)
+                {
+                    callback(*this);
+                }
+                break;
+            }
+            case WebSocketFile::PONG:
+                // 收到Pong，不需要特殊处理
+                break;
+            case WebSocketFile::CONTINUATION:
+                // 分片消息处理（为简化此处未实现）
+                break;
+            default:
+                // 未知操作码
+                break;
+            }
+ 
+            // 重置状态，准备处理下一帧
+            state = WAITING_HEADER;
+            frame_data.clear();
+            break;
+        }
         }
 
         co_yield {};
