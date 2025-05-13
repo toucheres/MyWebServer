@@ -36,7 +36,6 @@ class HttpServer : public co_async
     Task<void, void> start();
     Task<void, void> handle = start();
     std::string processRequest(const std::string& request);
-    // std::map<std::string, std::function<void(HttpServerFile&)>> callbacks;
     std::forward_list<std::pair<Format, std::function<void(serverFile&)>>> callbacks_format;
 
   public:

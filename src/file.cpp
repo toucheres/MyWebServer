@@ -121,10 +121,12 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         }
         ssize_t n = read(context->fd, context->content.data() + context->r_right,
                          context->content.size() - context->r_right);
-        // loop++;
-        // std::cout << "loop: " << loop << '\n';
         if (n > 0)
         {
+            std::cout << "socketget: " << "fd: " << context->fd
+                      << std::string_view{context->content.data() + context->r_right,
+                                          static_cast<size_t>(n)}
+                      << '\n';
             context->r_right += n;
             continue;
         }

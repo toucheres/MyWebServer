@@ -112,25 +112,25 @@ int main()
                     BIO_get_mem_ptr(b64, &bptr);
                     std::string acceptKey(bptr->data, bptr->length);
                     BIO_free_all(b64);
-
                     // 构建WebSocket握手响应
                     std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
                                            "Upgrade: websocket\r\n"
                                            "Connection: Upgrade\r\n"
                                            "Sec-WebSocket-Accept: " +
                                            acceptKey + "\r\n\r\n";
-
                     // 发送握手响应
                     socketfile.write(response);
-
                     // 升级协议 - 不再创建新对象，而是修改当前对象的协议类型
                     socketfile.upgradeProtocol(Agreement::WebSocket);
-                    socketfile.resetCorutine();
+                }
+                else
+                {
+                    socketfile.write("http not updata to websocket\r\n");
                 }
             }
             else if (socketfile.getAgreementType() == Agreement::WebSocket)
             {
-                socketfile.write("websocket ok get");
+                socketfile.write("websocket ok get\r\n");
             }
         });
     coManager.manager.add(httpServer);
