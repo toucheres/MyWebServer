@@ -12,12 +12,13 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-class WebSocketFile;
+
 class HttpServerFile : public serverFile
 {
+  public:
     friend serverFile;
-    friend WebSocketFile;
-    int httpState = true;
+    int fileState = true;
+    // protocolType已移至基类
     int reset() final override;
     enum ParseState
     {
@@ -40,15 +41,26 @@ class HttpServerFile : public serverFile
     std::function<void(serverFile&)> callback;
     int eventGo() override;
 
-  public:
+    // WebSocket 相关函数
+    Task<void, void> wsEventloop(); // WebSocket事件循环
+
     void closeIt();
     virtual int getStatus() override final;
+    //virtual int getAgreementType() override; // 仍然需要覆盖实现以支持特殊逻辑
+    virtual bool upgradeProtocol(int newProtocol) override;
+    virtual bool resetCorutine() override;
     ~HttpServerFile() = default;
     HttpServerFile(int fd, std::function<void(serverFile&)> callback = nullptr);
     virtual void setCallback(std::function<void(serverFile&)> callback) final;
     virtual int handle();
     virtual void write(std::string file) final;
-    virtual const std::map<std::string, std::string>& getContent()const final;
-    Task<void, void> eventloop();
-    Task<void, void> corutine = eventloop();
+    virtual const std::map<std::string, std::string>& getContent() const final;
+
+    // HTTP处理相关
+    Task<void, void> httpEventloop(); // HTTP事件循环
+
+    // WebSocket相关
+    static bool shouldbeUpdataToWS(const serverFile& httpfile); // 从WebSocketFile移动的函数
+
+    Task<void, void> corutine; // 当前活动的协程
 };

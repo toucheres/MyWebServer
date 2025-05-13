@@ -16,8 +16,8 @@ enum WebSocketOpcode
 };
 
 // 简单的WebSocket帧创建函数
-std::string createWebSocketFrame(bool fin, uint8_t opcode, const std::string& payload,
-                                 bool masked = false)
+std::string WebSocketFile::createWebSocketFrame(bool fin, uint8_t opcode, const std::string& payload,
+                                 bool masked)
 {
     std::string frame;
 
@@ -68,7 +68,7 @@ std::string createWebSocketFrame(bool fin, uint8_t opcode, const std::string& pa
 }
 
 // 解析WebSocket帧的简单实现
-std::string parseWebSocketFrame(const std::string& frame)
+std::string WebSocketFile::parseWebSocketFrame(const std::string& frame)
 {
     if (frame.empty())
     {
@@ -150,9 +150,14 @@ std::string parseWebSocketFrame(const std::string& frame)
 
     return payload;
 }
+
 void WebSocketFile::write(std::string content)
 {
+    // 使用类的静态方法创建WebSocket帧
+    std::string frame = createWebSocketFrame(true, TEXT, content);
+    socketfile.writeFile(frame);
 }
+
 void WebSocketFile::setCallback(std::function<void(serverFile&)> a_callback)
 {
     this->callback = std::move(a_callback);
@@ -163,10 +168,12 @@ const std::map<std::string, std::string>& WebSocketFile::getContent() const
 }
 WebSocketFile::WebSocketFile(SocketFile&& a_socketfile) : socketfile(std::move(a_socketfile))
 {
+    protocolType = Agreement::WebSocket; // 设置基类的协议类型
 }
 WebSocketFile::WebSocketFile(HttpServerFile&& origin)
     : socketfile(std::move(origin.socketfile)), webSocketState(true)
 {
+    protocolType = Agreement::WebSocket; // 设置基类的协议类型
     content["path"] = origin.content.at("path");
     this->setCallback(std::move(origin.callback));
 }
@@ -299,3 +306,7 @@ int WebSocketFile::reset()
 {
     return 0;
 }
+// int WebSocketFile::getAgreementType()
+// {
+//     return Agreement::WebSocket; // 确保返回WebSocket类型
+// }

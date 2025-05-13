@@ -15,6 +15,22 @@ class WebSocketFile : public serverFile
     std::function<void(serverFile&)> callback;
 
   public:
+    // WebSocket帧操作的静态方法
+    static std::string createWebSocketFrame(bool fin, uint8_t opcode, const std::string& payload,
+                                         bool masked = false);
+    static std::string parseWebSocketFrame(const std::string& frame);
+    
+    // WebSocket操作码枚举
+    enum WebSocketOpcode
+    {
+        CONTINUATION = 0x0,
+        TEXT = 0x1,
+        BINARY = 0x2,
+        CLOSE = 0x8,
+        PING = 0x9,
+        PONG = 0xA
+    };
+
     SocketFile socketfile;
     ~WebSocketFile() = default;
     WebSocketFile(SocketFile&& socketfile);
@@ -25,4 +41,6 @@ class WebSocketFile : public serverFile
     virtual int reset() final override;
     virtual const std::map<std::string, std::string>& getContent() const final override;
     virtual void setCallback(std::function<void(serverFile&)> callback) final override;
+    virtual bool upgradeProtocol(int newProtocol) override { return false; } // WebSocket不支持再次升级
+    virtual bool resetCorutine() override { return false; } // WebSocket不支持重置协程
 };
