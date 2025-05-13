@@ -20,6 +20,9 @@ class WebSocketFile : public serverFile
                                          bool masked = false);
     static std::string parseWebSocketFrame(const std::string& frame);
     
+    // 新增：创建WebSocket握手响应的方法
+    static std::string createWebSocketHandshake(const std::string& clientKey);
+    
     // WebSocket操作码枚举
     enum WebSocketOpcode
     {

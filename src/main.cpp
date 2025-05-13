@@ -78,7 +78,6 @@ int main()
                 if (HttpServerFile::shouldbeUpdataToWS(socketfile))
                 {
                     std::cout << "get websocket upgrade request\n";
-
                     // 获取请求中的Sec-WebSocket-Key
                     const auto& headers = socketfile.getContent();
                     auto key_it = headers.find("sec-websocket-key");
@@ -87,37 +86,10 @@ int main()
                         socketfile.write("HTTP/1.1 400 Bad Request\r\n\r\n");
                         return;
                     }
-
                     // 获取客户端发送的key
                     std::string clientKey = key_it->second;
-
-                    // 计算Sec-WebSocket-Accept
-                    // 将key与魔术字符串连接
-                    std::string combined = clientKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-                    // 计算SHA1哈希
-                    unsigned char hash[SHA_DIGEST_LENGTH];
-                    SHA1(reinterpret_cast<const unsigned char*>(combined.c_str()),
-                         combined.length(), hash);
-
-                    // Base64编码
-                    BIO* b64 = BIO_new(BIO_f_base64());
-                    BIO* bmem = BIO_new(BIO_s_mem());
-                    b64 = BIO_push(b64, bmem);
-                    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
-                    BIO_write(b64, hash, SHA_DIGEST_LENGTH);
-                    BIO_flush(b64);
-
-                    BUF_MEM* bptr;
-                    BIO_get_mem_ptr(b64, &bptr);
-                    std::string acceptKey(bptr->data, bptr->length);
-                    BIO_free_all(b64);
-                    // 构建WebSocket握手响应
-                    std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
-                                           "Upgrade: websocket\r\n"
-                                           "Connection: Upgrade\r\n"
-                                           "Sec-WebSocket-Accept: " +
-                                           acceptKey + "\r\n\r\n";
+                    // 使用WebSocketFile的方法生成握手响应
+                    std::string response = WebSocketFile::createWebSocketHandshake(clientKey);
                     // 发送握手响应
                     socketfile.write(response);
                     // 升级协议 - 不再创建新对象，而是修改当前对象的协议类型
@@ -130,7 +102,12 @@ int main()
             }
             else if (socketfile.getAgreementType() == Agreement::WebSocket)
             {
-                socketfile.write("websocket ok get\r\n");
+
+                auto res = std::move(WebSocketFile::createWebSocketFrame(
+                    true, WebSocketFile::TEXT,
+                    "socket readed!:" + socketfile.getContent().at("path")));
+                socketfile.write(res);
+                socketfile.reset();
             }
         });
     coManager.manager.add(httpServer);

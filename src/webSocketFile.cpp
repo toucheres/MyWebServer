@@ -1,8 +1,12 @@
 #include "httpServerFile.h"
 #include "serverFile.h"
 #include <iostream>
+#include <openssl/evp.h>
 #include <string>
 #include <webSocketFile.h>
+#include <openssl/sha.h> // 添加SHA1相关头文件
+#include <openssl/bio.h> // 添加BIO相关头文件
+#include <openssl/buffer.h> // 添加BUF_MEM相关头文件
 
 // WebSocket帧操作码
 enum WebSocketOpcode
@@ -149,6 +153,40 @@ std::string WebSocketFile::parseWebSocketFrame(const std::string& frame)
     }
 
     return payload;
+}
+
+// 新增：创建WebSocket握手响应的方法
+std::string WebSocketFile::createWebSocketHandshake(const std::string& clientKey)
+{
+    // 将key与魔术字符串连接
+    std::string combined = clientKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+    // 计算SHA1哈希
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1(reinterpret_cast<const unsigned char*>(combined.c_str()),
+         combined.length(), hash);
+
+    // Base64编码
+    BIO* b64 = BIO_new(BIO_f_base64());
+    BIO* bmem = BIO_new(BIO_s_mem());
+    b64 = BIO_push(b64, bmem);
+    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+    BIO_write(b64, hash, SHA_DIGEST_LENGTH);
+    BIO_flush(b64);
+
+    BUF_MEM* bptr;
+    BIO_get_mem_ptr(b64, &bptr);
+    std::string acceptKey(bptr->data, bptr->length);
+    BIO_free_all(b64);
+    
+    // 构建WebSocket握手响应
+    std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
+                           "Upgrade: websocket\r\n"
+                           "Connection: Upgrade\r\n"
+                           "Sec-WebSocket-Accept: " +
+                           acceptKey + "\r\n\r\n";
+    
+    return response;
 }
 
 void WebSocketFile::write(std::string content)
