@@ -161,6 +161,9 @@ const std::map<std::string, std::string>& WebSocketFile::getContent() const
 {
     return this->content;
 }
+WebSocketFile::WebSocketFile(SocketFile&& a_socketfile) : socketfile(std::move(a_socketfile))
+{
+}
 WebSocketFile::WebSocketFile(HttpServerFile&& origin)
     : socketfile(std::move(origin.socketfile)), webSocketState(true)
 {
@@ -251,7 +254,7 @@ Task<void, void> WebSocketFile::eventloop()
         std::string_view data = socketfile.read_added();
         if (!data.empty())
         {
-            // std::cout << data << '\n';
+            std::cout << data << '\n';
             std::string frame_data(data);
             std::string message = parseWebSocketFrame(frame_data);
 

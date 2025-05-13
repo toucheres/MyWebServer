@@ -17,6 +17,7 @@ class WebSocketFile : public serverFile
   public:
     SocketFile socketfile;
     ~WebSocketFile() = default;
+    WebSocketFile(SocketFile&& socketfile);
     WebSocketFile(HttpServerFile&& upgradefrom);
     void upgradefrom(HttpServerFile&& upgradefrom);
     static bool shouldbeUpdataToWS(const serverFile&);
