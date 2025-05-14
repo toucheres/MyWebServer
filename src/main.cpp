@@ -141,12 +141,15 @@ int main()
                 }
                 else
                 {
+                    socketfile.write(
+                        HttpServer::makeHttpHead(200, "http not updata to websocket\r\n"));
                     socketfile.write("http not updata to websocket\r\n");
                 }
                 return;
             }
             else if (socketfile.getAgreementType() == Agreement::WebSocket)
             {
+                // createWebSocketFrame格式似乎有问题
                 auto res = std::move(WebSocketUtil::createWebSocketFrame(
                     true, WebSocketUtil::TEXT,
                     "socket readed!:" + socketfile.getContent().at("path")));
@@ -160,8 +163,36 @@ int main()
 
     );
     httpServer.addCallbackFormat(
-        Format{"/ws", Format::Type::same}, [&static_files](serverFile& file)
-        { file.write(WebSocketUtil::createWebSocketFrame(1, WebSocketUtil::TEXT, "123")); });
+        Format{"/ws", Format::Type::same},
+        [&static_files](serverFile& socketfile)
+        {
+            auto& content = socketfile.getContent();
+            std::cout << "WebSocket消息已收到!" << std::endl;
+
+            // 打印客户端发送的消息(如果有)
+            if (content.find("message") != content.end())
+            {
+                std::cout << "客户端消息: " << content["message"] << std::endl;
+            }
+
+            // 打印所有收到的内容键值对
+            std::cout << "收到的内容: " << std::endl;
+            for (const auto& [key, value] : content)
+            {
+                std::cout << "  " << key << ": " << value << std::endl;
+            }
+
+            auto res = std::move(WebSocketUtil::createWebSocketFrame(
+                true, WebSocketUtil::TEXT,
+                "server get: " + (content.find("message") != content.end()
+                                            ? content["message"]
+                                            : "nothing")));
+
+            std::cout << "响应帧已创建，准备发送..." << std::endl;
+            socketfile.write(res);
+            std::cout << "响应已发送! 内容：" << std::endl;
+            std::cout << res << '\n';
+        });
     coManager.manager.add(httpServer);
     coManager.manager.add(con);
     coManager.loopTime = std::chrono::nanoseconds(0);
