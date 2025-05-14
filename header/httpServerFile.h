@@ -52,7 +52,8 @@ class HttpServerFile : public serverFile
     HttpServerFile(int fd, std::function<void(serverFile&)> callback = nullptr);
     virtual void setCallback(std::function<void(serverFile&)> callback) final;
     virtual int handle();
-    virtual void write(std::string file) final;
+    virtual void write(std::string file) final override;
+    virtual void write_str_with_agreement(std::string file) final override;
     virtual std::map<std::string, std::string>& getContent() final; // 更新返回类型
     virtual const std::map<std::string, std::string>& getContent() const final; // 添加const版本
 

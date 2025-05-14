@@ -1,3 +1,5 @@
+#include "http.h"
+#include "serverFile.h"
 #include <httpServerFile.h>
 #include <string>
 #include <webSocketFile.h>
@@ -46,9 +48,31 @@ void HttpServerFile::write(std::string file)
     //     std::string frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::TEXT, file);
     //     this->socketfile.writeFile(frame);
     // } else {
-        // HTTP原始写入
-        return this->socketfile.writeFile(file);
+    // HTTP原始写入
+    return this->socketfile.writeFile(file);
     // }
+}
+
+void HttpServerFile::write_str_with_agreement(std::string file)
+{
+    switch (protocolType)
+    {
+    case Agreement::HTTP:
+    {
+        auto tp = HttpServer::makeHttpHead(200, file);
+        write(tp);
+        write(file);
+        break;
+    }
+    case Agreement::WebSocket:
+    {
+        auto tp = WebSocketUtil::createWebSocketFrame(1, WebSocketUtil::TEXT, file);
+        write(tp);
+        break;
+    }
+    default:
+        break;
+    }
 }
 
 std::map<std::string, std::string>& HttpServerFile::getContent()
@@ -398,7 +422,8 @@ Task<void, void> HttpServerFile::wsEventloop()
                 case WebSocketUtil::CLOSE:
                 {
                     // 回应关闭帧并终止连接
-                    std::string close_frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
+                    std::string close_frame =
+                        WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
                     socketfile.writeFile(close_frame);
                     fileState = false;
                     break;
@@ -406,7 +431,8 @@ Task<void, void> HttpServerFile::wsEventloop()
                 case WebSocketUtil::PING:
                 {
                     // 回应Ping帧
-                    std::string pong_frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::PONG, "");
+                    std::string pong_frame =
+                        WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::PONG, "");
                     socketfile.writeFile(pong_frame);
                     break;
                 }
@@ -451,7 +477,8 @@ Task<void, void> HttpServerFile::wsEventloop()
             case WebSocketUtil::CLOSE:
             {
                 // 回应关闭帧并终止连接
-                std::string close_frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
+                std::string close_frame =
+                    WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
                 socketfile.writeFile(close_frame);
                 fileState = false;
                 break;
@@ -459,7 +486,8 @@ Task<void, void> HttpServerFile::wsEventloop()
             case WebSocketUtil::PING:
             {
                 // 回应Ping帧
-                std::string pong_frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::PONG, payload);
+                std::string pong_frame =
+                    WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::PONG, payload);
                 socketfile.writeFile(pong_frame);
                 break;
             }
@@ -487,7 +515,7 @@ Task<void, void> HttpServerFile::wsEventloop()
                 // 未知操作码
                 break;
             }
- 
+
             // 重置状态，准备处理下一帧
             state = WAITING_HEADER;
             frame_data.clear();

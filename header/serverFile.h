@@ -22,6 +22,7 @@ class serverFile : public co_async
     virtual std::map<std::string, std::string>& getContent() = 0; // 非const版本
     virtual const std::map<std::string, std::string>& getContent() const = 0; // 添加const版本
     virtual void write(std::string file) = 0;
+    virtual void write_str_with_agreement(std::string file) = 0;
     virtual void setCallback(std::function<void(serverFile&)> callback) = 0;
     virtual int getStatus() = 0;
     virtual int reset() = 0;

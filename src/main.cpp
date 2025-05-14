@@ -141,21 +141,20 @@ int main()
                 }
                 else
                 {
-                    socketfile.write(
-                        HttpServer::makeHttpHead(200, "http not updata to websocket\r\n"));
-                    socketfile.write("http not updata to websocket\r\n");
+                    // socketfile.write(
+                    //     HttpServer::makeHttpHead(200, "http not updata to websocket\r\n"));
+                    // socketfile.write("http not updata to websocket\r\n");
+                    socketfile.write_str_with_agreement("http not updata to websocket\r\n");
                 }
                 return;
             }
             else if (socketfile.getAgreementType() == Agreement::WebSocket)
             {
-                // createWebSocketFrame格式似乎有问题
                 auto res = std::move(WebSocketUtil::createWebSocketFrame(
                     true, WebSocketUtil::TEXT,
                     "socket readed!:" + socketfile.getContent().at("path")));
                 std::cout << "callbacked!" << '\n';
                 socketfile.write(res);
-                // socketfile.reset();
                 return;
             }
             return;
@@ -168,39 +167,16 @@ int main()
         {
             auto& content = socketfile.getContent();
             std::cout << "WebSocket消息已收到!" << std::endl;
-
             // 打印客户端发送的消息(如果有)
             if (content.find("message") != content.end())
             {
                 std::cout << "客户端消息: " << content["message"] << std::endl;
             }
-
             // 准备回复消息
             std::string replyText =
                 "Server received: " +
                 (content.find("message") != content.end() ? content["message"] : "no message");
-
-            // 创建WebSocket帧（使用纯ASCII消息进行测试）
-            auto res = std::move(
-                WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::TEXT, replyText, false));
-
-            // 打印帧的16进制表示以便调试
-            std::cout << "帧的16进制表示: ";
-            for (size_t i = 0; i < std::min(res.size(), size_t(30)); ++i)
-            {
-                printf("%02X ", (unsigned char)res[i]);
-            }
-            std::cout << std::endl;
-
-            // 打印帧头和内容长度
-            std::cout << "帧头大小: "
-                      << (res.size() < replyText.size() ? 0 : res.size() - replyText.size())
-                      << std::endl;
-            std::cout << "内容长度: " << replyText.size() << std::endl;
-
-            // 发送帧
-            socketfile.write(res);
-            std::cout << "响应已发送!" << std::endl;
+            socketfile.write_str_with_agreement(replyText);
         });
     coManager.manager.add(httpServer);
     coManager.manager.add(con);
