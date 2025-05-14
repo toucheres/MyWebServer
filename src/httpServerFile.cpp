@@ -2,11 +2,6 @@
 #include <string>
 #include <webSocketFile.h>
 
-// 删除不再需要的全局函数和枚举
-// enum WebSocketOpcode 已移至WebSocketFile.h
-// createWebSocketFrame 已移至WebSocketFile类
-// parseWebSocketFrame 已移至WebSocketFile类
-
 int HttpServerFile::eventGo()
 {
     corutine.resume();
@@ -22,11 +17,6 @@ int HttpServerFile::getStatus()
 {
     return this->fileState;
 }
-
-// int HttpServerFile::getAgreementType()
-// {
-//     return protocolType; // 现在直接返回基类的protocolType
-// }
 
 HttpServerFile::HttpServerFile(int fd, std::function<void(serverFile&)> a_callback)
     : socketfile(fd), callback(a_callback)
@@ -50,19 +40,24 @@ int HttpServerFile::handle()
 void HttpServerFile::write(std::string file)
 {
     // 根据协议类型处理不同的写入逻辑
-    // if (protocolType == Agreement::WebSocket) {
-    //     // WebSocket写入逻辑 - 使用WebSocketFile的静态方法
-    //     std::string frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::TEXT, file);
-    //     this->socketfile.writeFile(frame);
-    // } else {
-    // HTTP原始写入
-    return this->socketfile.writeFile(file);
-    // }
+    if (protocolType == Agreement::WebSocket) {
+        // WebSocket写入逻辑 - 使用WebSocketUtil的静态方法
+        std::string frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::TEXT, file);
+        this->socketfile.writeFile(frame);
+    } else {
+        // HTTP原始写入
+        return this->socketfile.writeFile(file);
+    }
+}
+
+std::map<std::string, std::string>& HttpServerFile::getContent()
+{
+    return content; // 直接返回基类的content
 }
 
 const std::map<std::string, std::string>& HttpServerFile::getContent() const
 {
-    return content;
+    return content; // 返回基类的const引用
 }
 
 int HttpServerFile::reset()
@@ -399,18 +394,18 @@ Task<void, void> HttpServerFile::wsEventloop()
                 // 没有有效载荷，直接处理帧
                 switch (opcode)
                 {
-                case WebSocketFile::CLOSE:
+                case WebSocketUtil::CLOSE:
                 {
                     // 回应关闭帧并终止连接
-                    std::string close_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::CLOSE, "");
+                    std::string close_frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
                     socketfile.writeFile(close_frame);
                     fileState = false;
                     break;
                 }
-                case WebSocketFile::PING:
+                case WebSocketUtil::PING:
                 {
                     // 回应Ping帧
-                    std::string pong_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::PONG, "");
+                    std::string pong_frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::PONG, "");
                     socketfile.writeFile(pong_frame);
                     break;
                 }
@@ -452,27 +447,27 @@ Task<void, void> HttpServerFile::wsEventloop()
             // 处理完整的帧
             switch (opcode)
             {
-            case WebSocketFile::CLOSE:
+            case WebSocketUtil::CLOSE:
             {
                 // 回应关闭帧并终止连接
-                std::string close_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::CLOSE, "");
+                std::string close_frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
                 socketfile.writeFile(close_frame);
                 fileState = false;
                 break;
             }
-            case WebSocketFile::PING:
+            case WebSocketUtil::PING:
             {
                 // 回应Ping帧
-                std::string pong_frame = WebSocketFile::createWebSocketFrame(true, WebSocketFile::PONG, payload);
+                std::string pong_frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::PONG, payload);
                 socketfile.writeFile(pong_frame);
                 break;
             }
-            case WebSocketFile::TEXT:
-            case WebSocketFile::BINARY:
+            case WebSocketUtil::TEXT:
+            case WebSocketUtil::BINARY:
             {
                 // 更新内容
                 content["message"] = payload;
-                content["type"] = (opcode == WebSocketFile::TEXT) ? "text" : "binary";
+                content["type"] = (opcode == WebSocketUtil::TEXT) ? "text" : "binary";
 
                 // 如果设置了回调，则调用
                 if (callback)
@@ -481,10 +476,10 @@ Task<void, void> HttpServerFile::wsEventloop()
                 }
                 break;
             }
-            case WebSocketFile::PONG:
+            case WebSocketUtil::PONG:
                 // 收到Pong，不需要特殊处理
                 break;
-            case WebSocketFile::CONTINUATION:
+            case WebSocketUtil::CONTINUATION:
                 // 分片消息处理（为简化此处未实现）
                 break;
             default:

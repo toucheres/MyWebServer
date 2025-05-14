@@ -36,7 +36,7 @@ class HttpServerFile : public serverFile
     size_t body_read = 0;
     std::string body_buffer;
 
-    std::map<std::string, std::string> content;
+    // content已移至基类
     SocketFile socketfile;
     std::function<void(serverFile&)> callback;
     int eventGo() override;
@@ -46,7 +46,6 @@ class HttpServerFile : public serverFile
 
     void closeIt();
     virtual int getStatus() override final;
-    //virtual int getAgreementType() override; // 仍然需要覆盖实现以支持特殊逻辑
     virtual bool upgradeProtocol(int newProtocol) override;
     virtual bool resetCorutine() override;
     ~HttpServerFile() = default;
@@ -54,7 +53,8 @@ class HttpServerFile : public serverFile
     virtual void setCallback(std::function<void(serverFile&)> callback) final;
     virtual int handle();
     virtual void write(std::string file) final;
-    virtual const std::map<std::string, std::string>& getContent() const final;
+    virtual std::map<std::string, std::string>& getContent() final; // 更新返回类型
+    virtual const std::map<std::string, std::string>& getContent() const final; // 添加const版本
 
     // HTTP处理相关
     Task<void, void> httpEventloop(); // HTTP事件循环
