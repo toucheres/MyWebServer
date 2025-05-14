@@ -11,6 +11,7 @@ std::string WebSocketUtil::createWebSocketFrame(bool fin, uint8_t opcode, const 
                                  bool masked)
 {
     std::string frame;
+    frame.reserve(10 + payload.size()); // 预留空间避免重新分配
 
     // 第一个字节: FIN(1位) + RSV1-3(3位) + Opcode(4位)
     uint8_t first_byte = opcode & 0x0F;

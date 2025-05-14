@@ -39,15 +39,16 @@ int HttpServerFile::handle()
 
 void HttpServerFile::write(std::string file)
 {
+    // 由回调自行决定
     // 根据协议类型处理不同的写入逻辑
-    if (protocolType == Agreement::WebSocket) {
-        // WebSocket写入逻辑 - 使用WebSocketUtil的静态方法
-        std::string frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::TEXT, file);
-        this->socketfile.writeFile(frame);
-    } else {
+    // if (protocolType == Agreement::WebSocket) {
+    //     // WebSocket写入逻辑 - 使用WebSocketUtil的静态方法
+    //     std::string frame = WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::TEXT, file);
+    //     this->socketfile.writeFile(frame);
+    // } else {
         // HTTP原始写入
         return this->socketfile.writeFile(file);
-    }
+    // }
 }
 
 std::map<std::string, std::string>& HttpServerFile::getContent()

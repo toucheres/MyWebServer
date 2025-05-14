@@ -175,23 +175,32 @@ int main()
                 std::cout << "客户端消息: " << content["message"] << std::endl;
             }
 
-            // 打印所有收到的内容键值对
-            std::cout << "收到的内容: " << std::endl;
-            for (const auto& [key, value] : content)
+            // 准备回复消息
+            std::string replyText =
+                "Server received: " +
+                (content.find("message") != content.end() ? content["message"] : "no message");
+
+            // 创建WebSocket帧（使用纯ASCII消息进行测试）
+            auto res = std::move(
+                WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::TEXT, replyText, false));
+
+            // 打印帧的16进制表示以便调试
+            std::cout << "帧的16进制表示: ";
+            for (size_t i = 0; i < std::min(res.size(), size_t(30)); ++i)
             {
-                std::cout << "  " << key << ": " << value << std::endl;
+                printf("%02X ", (unsigned char)res[i]);
             }
+            std::cout << std::endl;
 
-            auto res = std::move(WebSocketUtil::createWebSocketFrame(
-                true, WebSocketUtil::TEXT,
-                "server get: " + (content.find("message") != content.end()
-                                            ? content["message"]
-                                            : "nothing")));
+            // 打印帧头和内容长度
+            std::cout << "帧头大小: "
+                      << (res.size() < replyText.size() ? 0 : res.size() - replyText.size())
+                      << std::endl;
+            std::cout << "内容长度: " << replyText.size() << std::endl;
 
-            std::cout << "响应帧已创建，准备发送..." << std::endl;
+            // 发送帧
             socketfile.write(res);
-            std::cout << "响应已发送! 内容：" << std::endl;
-            std::cout << res << '\n';
+            std::cout << "响应已发送!" << std::endl;
         });
     coManager.manager.add(httpServer);
     coManager.manager.add(con);

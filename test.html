@@ -92,6 +92,149 @@
             font-style: italic;
             margin: 5px 0;
         }
+
+        /* 新增调试相关样式 */
+        .debug-panel {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .debug-header {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .debug-content {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            background-color: #f5f5f5;
+        }
+
+        .debug-entry {
+            margin-bottom: 8px;
+            border-left: 3px solid #ddd;
+            padding-left: 8px;
+        }
+
+        .debug-error {
+            border-left-color: #dc3545;
+            color: #dc3545;
+        }
+
+        .debug-warning {
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+
+        .debug-info {
+            border-left-color: #17a2b8;
+        }
+
+        .debug-hex {
+            background-color: #eee;
+            padding: 5px;
+            border-radius: 3px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .debug-timestamp {
+            color: #6c757d;
+            font-size: 0.8em;
+            margin-right: 5px;
+        }
+
+        /* 新增TCP流调试样式 */
+        .tcp-stream-panel {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .tcp-stream-header {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tcp-stream-content {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            background-color: #f8f9fa;
+        }
+
+        .stream-entry {
+            margin-bottom: 15px;
+            padding: 5px;
+            border-bottom: 1px dashed #ccc;
+        }
+
+        .stream-direction {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .direction-in {
+            color: #0066cc;
+        }
+
+        .direction-out {
+            color: #cc6600;
+        }
+
+        .raw-data {
+            background-color: #eee;
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .byte-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 5px;
+        }
+
+        .byte-table td {
+            padding: 2px 4px;
+            border: 1px solid #ddd;
+            font-size: 12px;
+        }
+
+        .byte-offset {
+            background-color: #f0f0f0;
+            color: #666;
+            text-align: right;
+        }
+
+        .byte-hex {
+            text-align: center;
+        }
+
+        .byte-char {
+            text-align: center;
+            color: #333;
+        }
+
+        .nonprintable {
+            color: #999;
+        }
     </style>
 </head>
 
@@ -109,6 +252,30 @@
 
         <button id="connectBtn">连接</button>
         <button id="disconnectBtn" disabled>断开连接</button>
+
+        <!-- 新增调试面板 -->
+        <div class="debug-panel">
+            <div class="debug-header">
+                <h3 style="margin: 0;">调试信息</h3>
+                <button id="clearDebugBtn" style="padding: 4px 8px;">清除</button>
+            </div>
+            <div class="debug-content" id="debugContent"></div>
+        </div>
+
+        <!-- 添加TCP流调试面板 -->
+        <div class="tcp-stream-panel">
+            <div class="tcp-stream-header">
+                <h3 style="margin: 0;">TCP数据流</h3>
+                <div>
+                    <label>
+                        <input type="checkbox" id="rawModeCheckbox" checked>
+                        原始模式
+                    </label>
+                    <button id="clearTcpStreamBtn" style="padding: 4px 8px; margin-left: 8px;">清除</button>
+                </div>
+            </div>
+            <div class="tcp-stream-content" id="tcpStreamContent"></div>
+        </div>
     </div>
 
     <script>
@@ -119,6 +286,176 @@
         const sendBtn = document.getElementById('sendBtn');
         const connectBtn = document.getElementById('connectBtn');
         const disconnectBtn = document.getElementById('disconnectBtn');
+        const debugContent = document.getElementById('debugContent');
+        const clearDebugBtn = document.getElementById('clearDebugBtn');
+        const tcpStreamContent = document.getElementById('tcpStreamContent');
+        const clearTcpStreamBtn = document.getElementById('clearTcpStreamBtn');
+        const rawModeCheckbox = document.getElementById('rawModeCheckbox');
+
+        // 清除调试信息
+        clearDebugBtn.addEventListener('click', function () {
+            debugContent.innerHTML = '';
+            logDebug('已清除调试信息', 'info');
+        });
+
+        // 清除TCP流数据
+        clearTcpStreamBtn.addEventListener('click', function () {
+            tcpStreamContent.innerHTML = '';
+            logDebug('已清除TCP数据流', 'info');
+        });
+
+        // 记录调试信息
+        function logDebug(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `debug-entry debug-${type}`;
+
+            // 添加时间戳
+            const timestamp = new Date().toLocaleTimeString();
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'debug-timestamp';
+            timeSpan.textContent = `[${timestamp}] `;
+
+            entry.appendChild(timeSpan);
+            entry.appendChild(document.createTextNode(message));
+
+            debugContent.appendChild(entry);
+            debugContent.scrollTop = debugContent.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // 记录TCP流数据
+        function logTcpStream(data, direction) {
+            const streamEntry = document.createElement('div');
+            streamEntry.className = 'stream-entry';
+
+            // 添加方向标记
+            const directionElement = document.createElement('div');
+            directionElement.className = `stream-direction direction-${direction}`;
+            directionElement.textContent = direction === 'in' ? '⬇ 服务器到客户端' : '⬆ 客户端到服务器';
+            streamEntry.appendChild(directionElement);
+
+            // 添加时间戳
+            const timestamp = document.createElement('div');
+            timestamp.style.fontSize = '12px';
+            timestamp.style.color = '#666';
+            timestamp.textContent = new Date().toLocaleTimeString() + '.' + new Date().getMilliseconds();
+            streamEntry.appendChild(timestamp);
+
+            // 添加原始数据信息
+            const dataInfo = document.createElement('div');
+            dataInfo.style.margin = '5px 0';
+            dataInfo.textContent = `数据长度: ${data.length} 字节`;
+            streamEntry.appendChild(dataInfo);
+
+            // 创建字节表格
+            const rawDataElement = document.createElement('div');
+            rawDataElement.className = 'raw-data';
+
+            // 创建表格
+            const table = document.createElement('table');
+            table.className = 'byte-table';
+
+            let rowHtml = '<tr><td class="byte-offset">偏移</td>';
+
+            // 添加16列十六进制头
+            for (let i = 0; i < 16; i++) {
+                rowHtml += `<td class="byte-hex">${i.toString(16).padStart(2, '0')}</td>`;
+            }
+
+            // 添加字符表示列
+            rowHtml += '<td colspan="16" class="byte-char">字符表示</td></tr>';
+
+            let currentRow = '';
+            let currentChars = '';
+            let offset = 0;
+
+            // 处理每个字节
+            for (let i = 0; i < data.length; i++) {
+                const byteValue = data.charCodeAt(i);
+
+                if (i % 16 === 0) {
+                    if (i > 0) {
+                        // 完成上一行并添加字符表示
+                        rowHtml += `${currentRow}<td colspan="16" class="byte-char">${currentChars}</td></tr>`;
+                        currentRow = '';
+                        currentChars = '';
+                    }
+                    // 开始新行
+                    currentRow = `<tr><td class="byte-offset">${offset.toString(16).padStart(8, '0')}</td>`;
+                    offset += 16;
+                }
+
+                // 添加十六进制表示
+                currentRow += `<td class="byte-hex">${byteValue.toString(16).padStart(2, '0')}</td>`;
+
+                // 添加字符表示
+                if (byteValue >= 32 && byteValue <= 126) {
+                    currentChars += data[i];
+                } else {
+                    currentChars += '<span class="nonprintable">.</span>';
+                }
+            }
+
+            // 填充最后一行
+            if (currentRow) {
+                // 填充剩余的空单元格
+                const remaining = 16 - (data.length % 16);
+                if (remaining < 16) {
+                    for (let i = 0; i < remaining; i++) {
+                        currentRow += '<td class="byte-hex"></td>';
+                    }
+                }
+                rowHtml += `${currentRow}<td colspan="16" class="byte-char">${currentChars}</td></tr>`;
+            }
+
+            table.innerHTML = rowHtml;
+            rawDataElement.appendChild(table);
+            streamEntry.appendChild(rawDataElement);
+
+            tcpStreamContent.appendChild(streamEntry);
+            tcpStreamContent.scrollTop = tcpStreamContent.scrollHeight;
+        }
+
+        // 显示十六进制数据
+        function showHexData(data, maxBytes = 100) {
+            if (typeof data !== 'string') {
+                return '非字符串数据';
+            }
+
+            const hexEntry = document.createElement('div');
+            hexEntry.className = 'debug-hex';
+
+            let hexOutput = '';
+            let charOutput = '';
+            let hexLine = '';
+
+            for (let i = 0; i < Math.min(data.length, maxBytes); i++) {
+                const charCode = data.charCodeAt(i);
+                const hexValue = charCode.toString(16).padStart(2, '0');
+
+                hexLine += hexValue + ' ';
+                charOutput += (charCode >= 32 && charCode <= 126) ? data[i] : '.';
+
+                if ((i + 1) % 16 === 0 || i === data.length - 1) {
+                    hexOutput += hexLine.padEnd(48, ' ') + ' | ' + charOutput + '\n';
+                    hexLine = '';
+                    charOutput = '';
+                }
+            }
+
+            if (data.length > maxBytes) {
+                hexOutput += `... (共 ${data.length} 字节)`;
+            }
+
+            hexEntry.textContent = hexOutput;
+            return hexEntry;
+        }
+
+        // 返回连接状态的文本描述
+        function getReadyStateText(state) {
+            const states = ['正在连接', '已连接', '正在关闭', '已关闭'];
+            return states[state] || '未知状态';
+        }
 
         // 添加消息到消息容器
         function addMessage(message, type) {
@@ -129,93 +466,184 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
+        // 创建Uint8Array视图
+        function createArrayBufferFromString(str) {
+            const buffer = new ArrayBuffer(str.length);
+            const view = new Uint8Array(buffer);
+            for (let i = 0; i < str.length; i++) {
+                view[i] = str.charCodeAt(i);
+            }
+            return view;
+        }
+
         // 连接WebSocket
         function connect() {
             if (socket && socket.readyState !== WebSocket.CLOSED) {
                 addMessage('已经存在连接！', 'system-message');
+                logDebug('尝试连接时已存在活跃连接', 'warning');
                 return;
             }
 
             statusDisplay.className = 'connection-status connecting';
             statusDisplay.textContent = '正在连接...';
-            
-            // 创建WebSocket连接
-            socket = new WebSocket('ws://localhost:8080/');
-            
-            // 连接打开时触发
-            socket.onopen = function() {
-                statusDisplay.className = 'connection-status connected';
-                statusDisplay.textContent = '已连接';
-                
-                addMessage('WebSocket连接已建立', 'system-message');
-                
-                // 启用输入框和按钮
-                messageInput.disabled = false;
-                sendBtn.disabled = false;
-                connectBtn.disabled = true;
-                disconnectBtn.disabled = false;
-            };
-            
-            // 接收到消息时触发
-            socket.onmessage = function(event) {
-                addMessage(`服务器: ${event.data}`, 'server-message');
-            };
-            
-            // 连接关闭时触发
-            socket.onclose = function() {
+
+            logDebug('开始连接WebSocket服务器(ws://localhost:8080/)', 'info');
+
+            try {
+                // 创建WebSocket连接
+                socket = new WebSocket('ws://localhost:8080/');
+                socket.binaryType = 'arraybuffer';
+                logDebug(`WebSocket对象已创建，状态: ${getReadyStateText(socket.readyState)}`);
+                logDebug('设置binaryType为: ' + socket.binaryType);
+
+                // 连接打开时触发
+                socket.onopen = function (event) {
+                    statusDisplay.className = 'connection-status connected';
+                    statusDisplay.textContent = '已连接';
+
+                    addMessage('WebSocket连接已建立', 'system-message');
+                    logDebug(`连接已建立，状态: ${getReadyStateText(socket.readyState)}`);
+                    logTcpStream('WebSocket握手完成', 'in');
+
+                    // 启用输入框和按钮
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                };
+
+                // 接收到消息时触发
+                socket.onmessage = function (event) {
+                    try {
+                        logDebug(`收到服务器消息，类型: ${typeof event.data}, 大小: ${
+                            event.data instanceof ArrayBuffer ? event.data.byteLength : event.data.length} 字节`);
+
+                        let messageText;
+                        let binaryData;
+
+                        if (event.data instanceof ArrayBuffer) {
+                            const view = new Uint8Array(event.data);
+                            messageText = '';
+                            for (let i = 0; i < view.length; i++) {
+                                messageText += String.fromCharCode(view[i]);
+                            }
+                            binaryData = messageText;
+                        } else {
+                            messageText = event.data;
+                            binaryData = event.data;
+                        }
+
+                        logTcpStream(binaryData, 'in');
+                        logDebug('消息内容的十六进制表示:');
+                        debugContent.appendChild(showHexData(messageText));
+
+                        addMessage(`服务器: ${messageText}`, 'server-message');
+                    } catch (e) {
+                        logDebug(`处理服务器消息时发生错误: ${e.message}`, 'error');
+                    }
+                };
+
+                // 连接关闭时触发
+                socket.onclose = function (event) {
+                    statusDisplay.className = 'connection-status disconnected';
+                    statusDisplay.textContent = '已断开连接';
+
+                    const reason = event.reason ? ` (原因: ${event.reason})` : '';
+                    const code = event.code ? ` [代码: ${event.code}]` : '';
+                    const cleanClose = event.wasClean ? '已正常关闭' : '意外关闭';
+
+                    addMessage(`WebSocket连接已关闭${code}`, 'system-message');
+                    logDebug(`连接已关闭 - ${cleanClose}${code}${reason}`, 'warning');
+
+                    // 禁用输入框和按钮
+                    messageInput.disabled = true;
+                    sendBtn.disabled = true;
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                };
+
+                // 发生错误时触发
+                socket.onerror = function (error) {
+                    addMessage(`错误: ${error.message || '连接出错'}`, 'system-message');
+                    statusDisplay.className = 'connection-status disconnected';
+                    statusDisplay.textContent = '连接错误';
+
+                    logDebug(`WebSocket错误，当前状态: ${getReadyStateText(socket.readyState)}`, 'error');
+                    try {
+                        const errorInfo = JSON.stringify(error, Object.getOwnPropertyNames(error));
+                        logDebug(`错误详情: ${errorInfo}`, 'error');
+                    } catch (e) {
+                        logDebug('无法获取详细错误信息', 'error');
+                    }
+                };
+
+                // 修改发送消息的处理
+                window.originalSendFunction = socket.send;
+                socket.send = function (data) {
+                    try {
+                        logTcpStream(data, 'out');
+                        return window.originalSendFunction.call(this, data);
+                    } catch (e) {
+                        logDebug(`拦截到发送错误: ${e.message}`, 'error');
+                        throw e;
+                    }
+                };
+            } catch (e) {
+                logDebug(`创建WebSocket连接时发生异常: ${e.message}`, 'error');
                 statusDisplay.className = 'connection-status disconnected';
-                statusDisplay.textContent = '已断开连接';
-                
-                addMessage('WebSocket连接已关闭', 'system-message');
-                
-                // 禁用输入框和按钮
-                messageInput.disabled = true;
-                sendBtn.disabled = true;
-                connectBtn.disabled = false;
-                disconnectBtn.disabled = true;
-            };
-            
-            // 发生错误时触发
-            socket.onerror = function(error) {
-                addMessage(`错误: ${error.message || '连接出错'}`, 'system-message');
-                statusDisplay.className = 'connection-status disconnected';
-                statusDisplay.textContent = '连接错误';
-            };
+                statusDisplay.textContent = '连接失败';
+                addMessage(`连接失败: ${e.message}`, 'system-message');
+            }
         }
-        
+
         // 断开WebSocket连接
         function disconnect() {
             if (socket) {
-                socket.close();
+                logDebug(`主动断开连接，当前状态: ${getReadyStateText(socket.readyState)}`);
+                socket.close(1000, "用户主动断开连接");
+                logDebug('关闭命令已发送');
             }
         }
-        
+
         // 发送消息
         function sendMessage() {
             if (!socket || socket.readyState !== WebSocket.OPEN) {
                 addMessage('WebSocket未连接！', 'system-message');
+                logDebug(`无法发送消息 - WebSocket未连接或状态不是OPEN，当前状态: ${getReadyStateText(socket?.readyState)}`, 'error');
                 return;
             }
-            
+
             const message = messageInput.value.trim();
             if (message) {
-                socket.send(message);
-                addMessage(`客户端: ${message}`, 'client-message');
-                messageInput.value = '';
+                try {
+                    logDebug(`准备发送消息: "${message}"，长度: ${message.length} 字节`);
+                    socket.send(message);
+                    logDebug('消息已发送');
+                    addMessage(`客户端: ${message}`, 'client-message');
+                    messageInput.value = '';
+                } catch (e) {
+                    logDebug(`发送消息时发生错误: ${e.message}`, 'error');
+                    addMessage(`发送失败: ${e.message}`, 'system-message');
+                }
             }
         }
-        
+
         // 添加事件监听器
         connectBtn.addEventListener('click', connect);
         disconnectBtn.addEventListener('click', disconnect);
         sendBtn.addEventListener('click', sendMessage);
-        
+
         // 回车键发送消息
-        messageInput.addEventListener('keypress', function(e) {
+        messageInput.addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 sendMessage();
             }
         });
+
+        // 页面加载时的初始日志
+        logDebug('WebSocket测试页面已加载', 'info');
+        logDebug('点击"连接"按钮开始WebSocket连接', 'info');
+        logTcpStream('TCP流跟踪已初始化', 'in');
     </script>
 </body>
 
