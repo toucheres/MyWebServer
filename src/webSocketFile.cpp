@@ -5,6 +5,8 @@
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
 #include <array>
+#include <httpServerFile.h>
+#include <algorithm> // 添加algorithm头文件以使用std::transform
 
 // 简单的WebSocket帧创建函数
 std::string WebSocketUtil::createWebSocketFrame(bool fin, uint8_t opcode, const std::string& payload,
@@ -175,4 +177,318 @@ std::string WebSocketUtil::createWebSocketHandshake(const std::string& clientKey
                            acceptKey + "\r\n\r\n";
     
     return response;
+}
+
+// 从HttpServerFile移动的WebSocket事件循环方法
+Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
+{
+    // 定义WebSocket解析状态
+    enum ParseState
+    {
+        WAITING_HEADER,
+        WAITING_LENGTH,
+        WAITING_MASK,
+        WAITING_PAYLOAD
+    };
+
+    ParseState state = WAITING_HEADER;
+
+    // 解析状态相关变量
+    bool fin = false;
+    uint8_t opcode = 0;
+    bool masked = false;
+    size_t payload_len = 0;
+    size_t header_size = 2;
+    size_t length_bytes_needed = 0;
+    std::array<uint8_t, 4> mask_key = {0, 0, 0, 0};
+    std::string payload;
+    std::string frame_data;
+
+    // 获取HttpServerFile对象的fileState成员
+    HttpServerFile* httpSelf = dynamic_cast<HttpServerFile*>(self);
+    if (!httpSelf) {
+        co_return;  // 如果不是HttpServerFile，直接返回
+    }
+
+    int& fileState = httpSelf->fileState;
+
+    while (fileState)
+    {
+        int ret = self->socketfile.eventGo();
+        if (ret == -1)
+        {
+            fileState = false;
+            co_yield {};
+        }
+
+        if ((!self->socketfile.handle.context) ||
+            (self->socketfile.handle.context->fd_state == SocketFile::WRONG))
+        {
+            fileState = false;
+            co_yield {};
+        }
+
+        // 根据当前状态处理数据
+        switch (state)
+        {
+        case WAITING_HEADER:
+        {
+            // 精确读取2字节的帧头
+            std::string_view header_bytes = self->socketfile.read_num(2);
+            if (header_bytes.size() < 2)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 保存帧数据
+            frame_data = std::string(header_bytes);
+
+            // 解析基本帧头
+            fin = (header_bytes[0] & 0x80) != 0;
+            opcode = header_bytes[0] & 0x0F;
+            masked = (header_bytes[1] & 0x80) != 0;
+            uint8_t payload_len_initial = header_bytes[1] & 0x7F;
+
+            // 根据载荷长度确定下一步
+            if (payload_len_initial < 126)
+            {
+                payload_len = payload_len_initial;
+                header_size = 2;
+                state = masked ? WAITING_MASK : WAITING_PAYLOAD;
+            }
+            else if (payload_len_initial == 126)
+            {
+                length_bytes_needed = 2;
+                state = WAITING_LENGTH;
+            }
+            else // payload_len_initial == 127
+            {
+                length_bytes_needed = 8;
+                state = WAITING_LENGTH;
+            }
+            break;
+        }
+
+        case WAITING_LENGTH:
+        {
+            // 精确读取扩展长度字段
+            std::string_view length_bytes = self->socketfile.read_num(length_bytes_needed);
+            if (length_bytes.size() < length_bytes_needed)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(length_bytes);
+
+            // 解析实际长度
+            if (length_bytes_needed == 2)
+            {
+                payload_len = ((static_cast<uint16_t>(length_bytes[0]) << 8) |
+                               static_cast<uint8_t>(length_bytes[1]));
+            }
+            else // length_bytes_needed == 8
+            {
+                payload_len = 0;
+                for (int i = 0; i < 8; ++i)
+                {
+                    payload_len = (payload_len << 8) | static_cast<uint8_t>(length_bytes[i]);
+                }
+            }
+
+            state = masked ? WAITING_MASK : WAITING_PAYLOAD;
+            break;
+        }
+
+        case WAITING_MASK:
+        {
+            // 精确读取4字节掩码
+            std::string_view mask_bytes = self->socketfile.read_num(4);
+            if (mask_bytes.size() < 4)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(mask_bytes);
+
+            // 保存掩码键值
+            for (int i = 0; i < 4; ++i)
+            {
+                mask_key[i] = static_cast<uint8_t>(mask_bytes[i]);
+            }
+
+            state = WAITING_PAYLOAD;
+            break;
+        }
+
+        case WAITING_PAYLOAD:
+        {
+            // 检查是否有有效载荷
+            if (payload_len == 0)
+            {
+                // 没有有效载荷，直接处理帧
+                switch (opcode)
+                {
+                case WebSocketUtil::CLOSE:
+                {
+                    // 回应关闭帧并终止连接
+                    std::string close_frame =
+                        WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
+                    self->socketfile.writeFile(close_frame);
+                    fileState = false;
+                    break;
+                }
+                case WebSocketUtil::PING:
+                {
+                    // 回应Ping帧
+                    std::string pong_frame =
+                        WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::PONG, "");
+                    self->socketfile.writeFile(pong_frame);
+                    break;
+                }
+                default:
+                    break;
+                }
+
+                // 重置状态，准备处理下一帧
+                state = WAITING_HEADER;
+                frame_data.clear();
+                break;
+            }
+
+            // 精确读取有效载荷数据
+            std::string_view payload_bytes = self->socketfile.read_num(payload_len);
+            if (payload_bytes.size() < payload_len)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(payload_bytes);
+
+            // 解码有效载荷
+            payload.clear();
+            payload.reserve(payload_len);
+
+            for (size_t i = 0; i < payload_len; ++i)
+            {
+                char byte = payload_bytes[i];
+                if (masked)
+                {
+                    byte ^= mask_key[i % 4];
+                }
+                payload.push_back(byte);
+            }
+
+            // 处理完整的帧
+            switch (opcode)
+            {
+            case WebSocketUtil::CLOSE:
+            {
+                // 回应关闭帧并终止连接
+                std::string close_frame =
+                    WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
+                self->socketfile.writeFile(close_frame);
+                fileState = false;
+                break;
+            }
+            case WebSocketUtil::PING:
+            {
+                // 回应Ping帧
+                std::string pong_frame =
+                    WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::PONG, payload);
+                self->socketfile.writeFile(pong_frame);
+                break;
+            }
+            case WebSocketUtil::TEXT:
+            case WebSocketUtil::BINARY:
+            {
+                // 更新内容
+                self->getContent()["message"] = payload;
+                self->getContent()["type"] = (opcode == WebSocketUtil::TEXT) ? "text" : "binary";
+
+                // 如果设置了回调，则调用
+                if (httpSelf->callback)
+                {
+                    httpSelf->callback(*self);
+                }
+                break;
+            }
+            case WebSocketUtil::PONG:
+                // 收到Pong，不需要特殊处理
+                break;
+            case WebSocketUtil::CONTINUATION:
+                // 分片消息处理（为简化此处未实现）
+                break;
+            default:
+                // 未知操作码
+                break;
+            }
+
+            // 重置状态，准备处理下一帧
+            state = WAITING_HEADER;
+            frame_data.clear();
+            break;
+        }
+        }
+
+        co_yield {};
+    }
+
+    co_return;
+}
+
+// 从HttpServerFile移动过来的方法
+bool WebSocketUtil::shouldbeUpdataToWS(const serverFile& httpfile)
+{
+    // 获取HTTP请求头
+    const auto& headers = httpfile.getContent();
+
+    // 检查是否是GET请求，WebSocket升级必须使用GET
+    auto method_it = headers.find("method");
+    if (method_it == headers.end() || method_it->second != "GET")
+        return false;
+
+    // 检查Connection头是否包含"Upgrade"
+    auto connection_it = headers.find("connection");
+    if (connection_it == headers.end())
+        return false;
+
+    // Connection头可能有多个值，以逗号分隔，需要检查其中是否包含"upgrade"（不区分大小写）
+    std::string connection_value = connection_it->second;
+    std::transform(connection_value.begin(), connection_value.end(), connection_value.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (connection_value.find("upgrade") == std::string::npos)
+        return false;
+
+    // 检查Upgrade头是否为"websocket"
+    auto upgrade_it = headers.find("upgrade");
+    if (upgrade_it == headers.end())
+        return false;
+
+    std::string upgrade_value = upgrade_it->second;
+    std::transform(upgrade_value.begin(), upgrade_value.end(), upgrade_value.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (upgrade_value != "websocket")
+        return false;
+
+    // 检查Sec-WebSocket-Key头是否存在
+    auto key_it = headers.find("sec-websocket-key");
+    if (key_it == headers.end() || key_it->second.empty())
+        return false;
+
+    // 检查Sec-WebSocket-Version头是否为13
+    auto version_it = headers.find("sec-websocket-version");
+    if (version_it == headers.end() || version_it->second != "13")
+        return false;
+
+    // 所有条件都满足，可以升级到WebSocket
+    return true;
 }

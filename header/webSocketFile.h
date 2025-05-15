@@ -1,6 +1,8 @@
 #pragma once
 #include <string>
 #include <array>
+#include "serverFile.h"
+#include "corutine.hpp"
 
 // WebSocket工具类 - 只包含静态方法和常量
 class WebSocketUtil
@@ -24,6 +26,12 @@ public:
     
     // WebSocket握手响应方法
     static std::string createWebSocketHandshake(const std::string& clientKey);
+    
+    // WebSocket事件循环 - 从HttpServerFile移动过来的静态方法
+    static Task<void, void> wsEventloop(serverFile* self);
+    
+    // 从HttpServerFile移动过来的方法 - 判断是否应该升级到WebSocket
+    static bool shouldbeUpdataToWS(const serverFile& httpfile);
     
     // 禁止实例化
     WebSocketUtil() = delete;

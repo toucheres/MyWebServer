@@ -36,32 +36,25 @@ class HttpServerFile : public serverFile
     size_t body_read = 0;
     std::string body_buffer;
 
-    // content已移至基类
-    SocketFile socketfile;
+    // socketfile已移至基类
     std::function<void(serverFile&)> callback;
     int eventGo() override;
-
-    // WebSocket 相关函数
-    Task<void, void> wsEventloop(); // WebSocket事件循环
 
     void closeIt();
     virtual int getStatus() override final;
     virtual bool upgradeProtocol(int newProtocol) override;
-    virtual bool resetCorutine() override;
+    virtual bool resetCorutine() override; // 重写父类方法
     ~HttpServerFile() = default;
     HttpServerFile(int fd, std::function<void(serverFile&)> callback = nullptr);
     virtual void setCallback(std::function<void(serverFile&)> callback) final;
     virtual int handle();
     virtual void write(std::string file) final override;
-    virtual void write_str_with_agreement(std::string file) final override;
     virtual std::map<std::string, std::string>& getContent() final; // 更新返回类型
     virtual const std::map<std::string, std::string>& getContent() const final; // 添加const版本
 
     // HTTP处理相关
-    Task<void, void> httpEventloop(); // HTTP事件循环
+    Task<void, void> httpEventloop() override; // 实现父类虚函数
 
-    // WebSocket相关
-    static bool shouldbeUpdataToWS(const serverFile& httpfile); // 从WebSocketFile移动的函数
-
-    Task<void, void> corutine; // 当前活动的协程
+    // WebSocket相关方法已移至WebSocketUtil
+    // corutine已移至基类
 };
