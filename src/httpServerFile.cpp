@@ -144,12 +144,12 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 
                 // 只重置必要的状态变量
                 state = REQUEST_LINE;
-                method.clear();
-                path.clear();
-                version.clear();
+                // method.clear();
+                // path.clear();
+                // version.clear();
                 content_length = 0;
                 body_read = 0;
-                body_buffer.clear();
+                // body_buffer.clear();
             }
         }
         break;
