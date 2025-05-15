@@ -204,27 +204,20 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
     std::string payload;
     std::string frame_data;
 
-    // 获取HttpServerFile对象的fileState成员
-    HttpServerFile* httpSelf = dynamic_cast<HttpServerFile*>(self);
-    if (!httpSelf) {
-        co_return;  // 如果不是HttpServerFile，直接返回
-    }
-
-    int& fileState = httpSelf->fileState;
-
-    while (fileState)
+    // 直接使用self->fileState
+    while (self->fileState)
     {
         int ret = self->socketfile.eventGo();
         if (ret == -1)
         {
-            fileState = false;
+            self->fileState = false;
             co_yield {};
         }
 
         if ((!self->socketfile.handle.context) ||
             (self->socketfile.handle.context->fd_state == SocketFile::WRONG))
         {
-            fileState = false;
+            self->fileState = false;
             co_yield {};
         }
 
@@ -339,7 +332,7 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                     std::string close_frame =
                         WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
                     self->socketfile.writeFile(close_frame);
-                    fileState = false;
+                    self->fileState = false;
                     break;
                 }
                 case WebSocketUtil::PING:
@@ -394,7 +387,7 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                 std::string close_frame =
                     WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::CLOSE, "");
                 self->socketfile.writeFile(close_frame);
-                fileState = false;
+                self->fileState = false;
                 break;
             }
             case WebSocketUtil::PING:
@@ -412,10 +405,10 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                 self->getContent()["message"] = payload;
                 self->getContent()["type"] = (opcode == WebSocketUtil::TEXT) ? "text" : "binary";
 
-                // 如果设置了回调，则调用
-                if (httpSelf->callback)
+                // 使用基类的回调函数
+                if (self->callback)
                 {
-                    httpSelf->callback(*self);
+                    self->callback(*self);
                 }
                 break;
             }

@@ -1,6 +1,5 @@
 #include "http.h"
 #include "file.h"
-#include "httpServerFile.h"
 #include <errno.h>
 #include <filesystem>
 #include <iostream>
@@ -39,29 +38,26 @@ int HttpServer::processFiles()
 // 新增：从HttpFiles移动的add方法
 bool HttpServer::add(int fd)
 {
-    std::shared_ptr<HttpServerFile> ptr = std::make_shared<HttpServerFile>(fd);
+    std::shared_ptr<serverFile> ptr = std::make_shared<serverFile>(fd);
     auto [it, inserted] = this->fileMap.try_emplace(fd, ptr);
+
     if (!inserted)
     {
-        it->second = ptr; // 或更新现有值
+        it->second = ptr;
         return false;
     }
     else
     {
+        // 初始化HTTP协议
+        it->second->protocolType = Agreement::HTTP;
+        it->second->resetCorutine();
+
         it->second->setCallback(
             [this](serverFile& self)
             {
                 auto pathIter = self.getContent().find("path");
                 if (pathIter != self.getContent().end())
                 {
-                    // std::cout << "---" << pathIter->second << "---\n";
-                    // auto cbIter = this->callbacks.find(pathIter->second);
-                    // if (cbIter != this->callbacks.end())
-                    // {
-                    //     cbIter->second(self);
-                    // }
-                    // else
-                    // {
                     for (auto call = callbacks_format.begin(); call != callbacks_format.end();
                          call++)
                     {
@@ -71,24 +67,11 @@ bool HttpServer::add(int fd)
                             break;
                         }
                     }
-                    // }
                 }
             });
     }
     return true;
 }
-
-// // 新增：从HttpFiles移动的get方法
-// HttpServerFile& HttpServer::get(int fd)
-// {
-//     return fileMap.at(fd);
-// }
-
-// // 新增：从HttpFiles移动的getMap方法
-// const std::unordered_map<int, HttpServerFile>& HttpServer::getMap()
-// {
-//     return fileMap;
-// }
 
 int HttpServer::makeSocket()
 {
@@ -168,16 +151,6 @@ HttpServer::HttpServer(std::string ip_listening, uint16_t port)
     {
         std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
     }
-    // callbacks["1"] = [](HttpServerFile& self)
-    // {
-    //     const char* response = "HTTP/1.1 200 OK\r\n"
-    //                            "Content-Type: text/plain\r\n"
-    //                            "Content-Length: 25\r\n"
-    //                            "Connection: keep-alive\r\n"
-    //                            "\r\n"
-    //                            "Hello from MyWebServer!\r\n";
-    //     self.socketfile.writeFile(response);
-    // };
 }
 
 HttpServer::~HttpServer()
@@ -213,8 +186,6 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
             std::filesystem::path relative_path =
                 std::filesystem::relative(entry.path(), current_path);
             std::string url_path = "/" + relative_path.string(); // 转换为URL路径格式
-            // std::cout << url_path << '\n';
-            // 为该文件路径添加回调
             addCallbackFormat(Format{url_path, Format::Type::same},
                               [&static_files](serverFile& file)
                               {
@@ -231,14 +202,10 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                                   std::string_view content = Localfile.read();
                                   if (content != "")
                                   {
-                                      // std::cout << content.size() << '\n';
                                       std::string head = HttpServer::makeHttpHead(
                                           200, content, HttpServer::judge_file_type(path));
-                                      // std::cout << head << '\n';
                                       file.write(std::move(head));
                                       file.write(std::move(std::string(content)));
-                                      //   file.socketfile.writeFile(std::move(head));
-                                      //   file.socketfile.writeFile(std::move(std::string(content)));
                                   }
                               });
         }
@@ -274,11 +241,6 @@ bool HttpServer::stop()
 {
     return true;
 }
-
-// void HttpServer::addCallback(std::string path, std::function<void(HttpServerFile&)> callback)
-// {
-//     callbacks.insert_or_assign(path, callback);
-// }
 
 void HttpServer::addCallbackFormat(Format format, std::function<void(serverFile&)> callback)
 {

@@ -1,114 +1,37 @@
-#include "http.h"
 #include "serverFile.h"
-#include <httpServerFile.h>
+#include "httpServerFile.h"
+#include <algorithm>
 #include <string>
-#include <webSocketFile.h>
 
-int HttpServerFile::eventGo()
+// HTTP协议的事件循环 - 静态方法
+Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
 {
-    corutine.resume();
-    return fileState;
-}
+    // 解析状态相关变量
+    ParseState state = REQUEST_LINE;
+    std::string method;
+    std::string path;
+    std::string version;
+    size_t content_length = 0;
+    size_t body_read = 0;
+    std::string body_buffer;
 
-void HttpServerFile::closeIt()
-{
-    this->socketfile.closeIt();
-}
-
-int HttpServerFile::getStatus()
-{
-    return this->fileState;
-}
-
-HttpServerFile::HttpServerFile(int fd, std::function<void(serverFile&)> a_callback)
-    : serverFile(fd), callback(a_callback)
-{
-    // 初始时使用HTTP协议处理
-    protocolType = Agreement::HTTP;
-    corutine = httpEventloop();
-}
-
-void HttpServerFile::setCallback(std::function<void(serverFile&)> a_callback)
-{
-    callback = a_callback;
-}
-
-int HttpServerFile::handle()
-{
-    callback(*this);
-    return 0;
-}
-
-void HttpServerFile::write(std::string file)
-{
-    return this->socketfile.writeFile(file);
-}
-
-std::map<std::string, std::string>& HttpServerFile::getContent()
-{
-    return content; // 直接返回基类的content
-}
-
-const std::map<std::string, std::string>& HttpServerFile::getContent() const
-{
-    return content; // 返回基类的const引用
-}
-
-int HttpServerFile::reset()
-{
-    if (protocolType == Agreement::HTTP)
+    while (self->fileState)
     {
-        // 重置HTTP协议状态
-        content.clear();
-        state = REQUEST_LINE;
-        method.clear();
-        path.clear();
-        version.clear();
-        content_length = 0;
-        body_read = 0;
-        body_buffer.clear();
-    }
-
-    return 0;
-}
-
-bool HttpServerFile::upgradeProtocol(int newProtocol)
-{
-    if (newProtocol == protocolType)
-    {
-        return true; // 已经是该协议，无需切换
-    }
-
-    protocolType = newProtocol; // 现在直接修改基类的protocolType
-    return serverFile::resetCorutine(); // 调用父类的实现
-}
-
-bool HttpServerFile::resetCorutine()
-{
-    // 委托给父类实现
-    return serverFile::resetCorutine();
-}
-
-// HTTP协议的事件循环
-Task<void, void> HttpServerFile::httpEventloop()
-{
-    while (1)
-    {
-        int ret = socketfile.eventGo();
+        int ret = self->socketfile.eventGo();
         if (ret == -1)
         {
-            fileState = false;
+            self->fileState = false;
             co_yield {};
         }
 
-        if ((!socketfile.handle.context) ||
-            (socketfile.handle.context->fd_state == SocketFile::WRONG))
+        if ((!self->socketfile.handle.context) ||
+            (self->socketfile.handle.context->fd_state == SocketFile::WRONG))
         {
-            fileState = false;
+            self->fileState = false;
             co_yield {};
         }
 
-        std::string_view tp = socketfile.read_line();
+        std::string_view tp = self->socketfile.read_line();
         switch (state)
         {
         case REQUEST_LINE:
@@ -129,9 +52,9 @@ Task<void, void> HttpServerFile::httpEventloop()
                     version =
                         std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
 
-                    content.try_emplace("method", method);
-                    content.try_emplace("path", path);
-                    content.try_emplace("version", version);
+                    self->content["method"] = method;
+                    self->content["path"] = path;
+                    self->content["version"] = version;
 
                     state = HEADERS;
                 }
@@ -148,8 +71,8 @@ Task<void, void> HttpServerFile::httpEventloop()
             {
                 if (method == "POST")
                 {
-                    auto it = content.find("content-length");
-                    if (it != content.end())
+                    auto it = self->content.find("content-length");
+                    if (it != self->content.end())
                     {
                         try
                         {
@@ -188,7 +111,7 @@ Task<void, void> HttpServerFile::httpEventloop()
                         val = std::string(tp.substr(index + 2, val_len));
                     }
 
-                    content.try_emplace(key, val);
+                    self->content.try_emplace(key, val);
                 }
             }
             break;
@@ -206,7 +129,7 @@ Task<void, void> HttpServerFile::httpEventloop()
 
                 if (body_read >= content_length)
                 {
-                    content.try_emplace("postcontent", body_buffer);
+                    self->content.try_emplace("postcontent", body_buffer);
                     state = COMPLETE;
                 }
             }
@@ -214,11 +137,19 @@ Task<void, void> HttpServerFile::httpEventloop()
 
         case COMPLETE:
         {
-            if (socketfile.handle.context &&
-                socketfile.handle.context->fd_state != SocketFile::WRONG)
+            if (self->socketfile.handle.context &&
+                self->socketfile.handle.context->fd_state != SocketFile::WRONG)
             {
-                handle();
+                self->handle();
+                
+                // 只重置必要的状态变量
                 state = REQUEST_LINE;
+                method.clear();
+                path.clear();
+                version.clear();
+                content_length = 0;
+                body_read = 0;
+                body_buffer.clear();
             }
         }
         break;

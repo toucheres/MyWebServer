@@ -12,29 +12,43 @@ namespace Agreement
 class serverFile : public co_async
 {
   public:
-    int protocolType = Agreement::HTTP; // 添加协议类型作为基类成员变量
-    std::map<std::string, std::string> content; // 从HttpServerFile移动到基类
-    SocketFile socketfile; // 从HttpServerFile移动到基类
-    Task<void, void> corutine; // 当前活动的协程，从HttpServerFile移动到基类
+    int protocolType = Agreement::HTTP; 
+    std::map<std::string, std::string> content;
+    SocketFile socketfile;
+    Task<void, void> corutine;
+    std::function<void(serverFile&)> callback;
+    int fileState = true;
     
   public:
     serverFile() = default;
     serverFile(int fd) : socketfile(fd) {}
     
-    virtual int getAgreementType()
-    {
-        return protocolType;
-    } // 简化为直接返回protocolType
-    virtual std::map<std::string, std::string>& getContent() = 0; // 非const版本
-    virtual const std::map<std::string, std::string>& getContent() const = 0; // 添加const版本
-    virtual void write(std::string file) = 0;
-    virtual void setCallback(std::function<void(serverFile&)> callback) = 0;
-    virtual int getStatus() = 0;
-    virtual int reset() = 0;
-    virtual bool upgradeProtocol(int newProtocol) = 0;
+    // 实现所有虚函数，不再是抽象类
+    int getAgreementType() { return protocolType; }
+    std::map<std::string, std::string>& getContent() { return content; }
+    const std::map<std::string, std::string>& getContent() const { return content; }
+    void write(std::string file) { socketfile.writeFile(file); }
+    void setCallback(std::function<void(serverFile&)> a_callback) { callback = a_callback; }
+    int getStatus() { return fileState; }
+    int handle() {
+        if (callback) {
+            callback(*this);
+        }
+        return 0;
+    }
+    void closeIt() { socketfile.closeIt(); }
+    bool upgradeProtocol(int newProtocol) {
+        if (newProtocol == protocolType) return true;
+        protocolType = newProtocol;
+        return resetCorutine();
+    }
     
-    // 重新实现resetCorutine，不再是纯虚函数
-    virtual bool resetCorutine();
+    // 协程管理
+    bool resetCorutine();
+    virtual int eventGo() override {
+        corutine.resume();
+        return fileState;
+    }
     
     // 派生类需要实现的用于协程重置的方法
     virtual Task<void, void> httpEventloop() { return {}; } // 默认实现返回空协程

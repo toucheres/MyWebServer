@@ -6,7 +6,6 @@
 #include <format.h>
 #include <forward_list>
 #include <functional>
-#include <httpServerFile.h>
 #include <netinet/in.h>
 #include <string>
 #include <sys/fcntl.h>
@@ -14,8 +13,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
-class HttpServerFile;
-class HttpServer;
 
 class HttpServer : public co_async
 {
@@ -25,8 +22,6 @@ class HttpServer : public co_async
     std::string ip_listening;
     bool running;
     Co_Manager manager;
-    // std::unordered_map<std::string, HttpAPI> callback;
-    //  创建套接字
     int eventGo() override;
     int makeSocket();
     int bindSocket(int server_fd);
@@ -44,7 +39,6 @@ class HttpServer : public co_async
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
     bool stop();
-    // void addCallback(std::string path, std::function<void(HttpServerFile&)> callback);
     void addCallbackFormat(Format format, std::function<void(serverFile&)> callback);
     int removeCallbackFormat(const Format& format);
     static std::string makeHttpHead(int status, std::string_view content,
@@ -54,7 +48,5 @@ class HttpServer : public co_async
 
     // 从HttpFiles移动过来的方法
     bool add(int fd);
-    // HttpServerFile& get(int fd);
-    // const std::unordered_map<int, HttpServerFile>& getMap();
     int processFiles(); // 替代原HttpFiles的eventGo
 };
