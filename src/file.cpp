@@ -1,13 +1,12 @@
 #include "corutine.hpp"
+#include "platform.h" // 添加平台兼容性头文件
 #include <errno.h>
-#include <fcntl.h>
 #include <file.h>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <string.h>
 #include <string_view>
-#include <sys/socket.h>
 #include <unistd.h>
 
 // LocalFile实现
@@ -101,7 +100,6 @@ void SocketFile::closeIt()
 
 Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
 {
-    // int loop = 0;
     while (true)
     {
         // 检查缓冲区是否需要扩容
@@ -109,89 +107,81 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         {
             context->content.resize(context->content.size() * 2);
         }
-        // 异步读取数据
-        int flags = fcntl(context->fd, F_GETFL, 0);
-        if (flags == -1)
-        {
-            std::cerr << "获取socket标志失败: " << strerror(errno) << std::endl;
-        }
-        if (fcntl(context->fd, F_SETFL, flags | O_NONBLOCK) == -1)
-        {
-            std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
-        }
-        ssize_t n = read(context->fd, context->content.data() + context->r_right,
-                         context->content.size() - context->r_right);
+        
+        // 设置非阻塞模式 - 使用平台无关的函数
+        platform::setNonBlocking(context->fd);
+        
+        // 读取数据 - 使用平台无关的接口
+        ssize_t n = platform::readSocket(context->fd, 
+                                        context->content.data() + context->r_right,
+                                        context->content.size() - context->r_right);
+        
         if (n > 0)
         {
-            // std::cout << "socketget: " << "fd: " << context->fd
-            //           << std::string_view{context->content.data() + context->r_right,
-            //                               static_cast<size_t>(n)}
-            //           << '\n';
             context->r_right += n;
             continue;
         }
         else if (n == 0)
         {
             context->fd_state = WRONG;
-            // std::cout << "连接已关闭\n";
             break;
         }
-        else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        else if (n < 0)
         {
-            // 暂无数据可读，暂停协程
-            // co_yield {};
-        }
-        else
-        {
-            // 读取错误
-            if (errno == ECONNRESET || errno == EPIPE || errno == ECONNABORTED)
+            // 使用平台无关的错误检查
+            int lastError = platform::getLastError();
+            if (platform::isWouldBlock(lastError))
             {
-                std::cerr << "客户端断开连接: " << strerror(errno) << ", fd: " << context->fd
-                          << std::endl;
+                // 暂无数据可读，暂停协程
             }
             else
             {
-                std::cerr << "Socket read error: " << strerror(errno) << ", fd: " << context->fd
-                          << std::endl;
+                // 读取错误 - 统一使用平台无关函数
+                if (platform::isConnectionReset(lastError))
+                {
+                    std::cerr << "客户端断开连接: " 
+                              << platform::getErrorString(lastError)
+                              << ", fd: " << context->fd << std::endl;
+                }
+                else
+                {
+                    std::cerr << "Socket read error: " 
+                              << platform::getErrorString(lastError)
+                              << ", fd: " << context->fd << std::endl;
+                }
+                context->fd_state = WRONG;
+                co_yield {};
             }
-            context->fd_state = WRONG;
-            co_yield {};
         }
+        
         // 写数据
         if (!context->waitingWrites.empty() &&
             (context->waitingWrites.front().w_right > context->waitingWrites.front().w_left))
         {
-            int written = ::write(
+            ssize_t written = platform::writeSocket(
                 context->fd,
                 &context->waitingWrites.front().waitingWrite[context->waitingWrites.front().w_left],
                 context->waitingWrites.front().w_right - context->waitingWrites.front().w_left);
-            // std::cout << "writtennum : " << written << '\n';
-            // std::cout << "written: "
-            //           << std::string_view{&context->waitingWrites.front()
-            //                                    .waitingWrite[context->waitingWrites.front().w_left],
-            //                               context->waitingWrites.front().w_right -
-            //                                   context->waitingWrites.front().w_left}
-            //           << '\n';
-            if (written == -1)
+            
+            if (written == SOCKET_ERROR_RETURN)
             {
-                // 处理写入错误
-                if (errno == EINTR)
+                // 处理写入错误 - 跨平台处理
+                int lastError = platform::getLastError();
+                
+                // 特定错误处理
+                if (lastError == EINTR) // EINTR是一个跨平台的宏
                 {
                     // 被信号中断，继续尝试
                     continue;
                 }
-                else if (errno == EAGAIN || errno == EWOULDBLOCK)
+                else if (platform::isWouldBlock(lastError))
                 {
                     // 非阻塞模式下缓冲区已满，可以稍后重试
-                    // 在协程环境中，应该yield后继续
-                    // co_yield {};
-                    // continue;
                 }
                 else
                 {
                     // 其他错误（连接关闭等）
-                    //[Bug] Bad address
-                    std::cerr << "写入失败: " << strerror(errno) << std::endl;
+                    std::cerr << "写入失败: " << platform::getErrorString(lastError) << std::endl;
                     context->fd_state = WRONG;
                     break;
                 }
@@ -255,37 +245,6 @@ const std::string_view SocketFile::read_num(size_t num) const
 
 const std::string_view SocketFile::read_line() const
 {
-    // size_t& r_left = this->handle.get_context()->r_left;
-    // size_t& r_right = this->handle.get_context()->r_right;
-    // if (r_right - r_left <= 1)
-    // {
-    //     return std::string_view{""};
-    // }
-    // else
-    // {
-    //     int fiannl = -1;
-    //     for (size_t i = r_left; i <= r_right - 1; i++)
-    //     {
-    //         if (this->handle.get_context()->content[i] == '\r' &&
-    //             this->handle.get_context()->content[i + 1] == '\n')
-    //         {
-    //             fiannl = i + 1;
-    //             break;
-    //         }
-    //     }
-    //     if (fiannl != -1)
-    //     {
-    //         auto tp = std::string_view(
-    //             &this->handle.get_context()->content[this->handle.get_context()->r_left],
-    //             fiannl - r_left + 1);
-    //         r_left = fiannl + 1;
-    //         return tp;
-    //     }
-    //     else
-    //     {
-    //         return std::string_view{""};
-    //     }
-    // }
     return read_until("\r\n");
 }
 
@@ -357,18 +316,7 @@ const void SocketFile::writeFile(const std::string file)
 
 bool SocketFile::setNonBlocking()
 {
-    int flags = fcntl(this->handle.context->fd, F_GETFL, 0);
-    if (flags == -1)
-    {
-        std::cerr << "获取socket标志失败: " << strerror(errno) << std::endl;
-        return false;
-    }
-    if (fcntl(this->handle.context->fd, F_SETFL, flags | O_NONBLOCK) == -1)
-    {
-        std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
-        return false;
-    }
-    return true;
+    return platform::setNonBlocking(this->handle.context->fd);
 }
 
 // LocalFiles实现
@@ -415,7 +363,7 @@ int SocketFiles::eventGo()
     {
         if (it->second.eventGo() == -1)
         {
-            close(it->second.handle.context->fd);
+            platform::closeSocket(it->second.handle.context->fd);
             it = fileMap.erase(it);
         }
         else

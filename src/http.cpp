@@ -1,11 +1,12 @@
 #include "http.h"
 #include "file.h"
-#include <errno.h>
+#include "platform.h"
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string_view>
 #include <unistd.h>
+
 int HttpServer::eventGo()
 {
     handle.resume();
@@ -75,11 +76,16 @@ bool HttpServer::add(int fd)
 
 int HttpServer::makeSocket()
 {
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == -1)
+    // 初始化socket库 - 平台无关调用
+    if (!platform::initSocketLib()) {
+        std::cerr << "Failed to initialize socket library" << std::endl;
+        return INVALID_SOCKET_VALUE;
+    }
+    
+    socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == INVALID_SOCKET_VALUE)
     {
-        std::cerr << "Socket creation failed" << std::endl;
-        return -1;
+        platform::printError("Socket creation failed");
     }
     return server_fd;
 }
@@ -91,11 +97,12 @@ int HttpServer::bindSocket(int server_fd)
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(port);
-    if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1)
+    
+    if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR_RETURN)
     {
-        std::cerr << "Bind failed" << std::endl;
-        close(server_fd);
-        return -1;
+        platform::printError("Bind failed");
+        platform::closeSocket(server_fd);
+        return INVALID_SOCKET_VALUE;
     }
     return server_fd;
 }
@@ -103,10 +110,10 @@ int HttpServer::bindSocket(int server_fd)
 bool HttpServer::listenSocket(int server_fd, size_t listenLenth)
 {
     // 监听连接
-    if (listen(server_fd, listenLenth) == -1)
+    if (listen(server_fd, listenLenth) == SOCKET_ERROR_RETURN)
     {
-        std::cerr << "Listen failed" << std::endl;
-        close(server_fd);
+        platform::printError("Listen failed");
+        platform::closeSocket(server_fd);
         return false;
     }
     return true;
@@ -115,19 +122,20 @@ bool HttpServer::listenSocket(int server_fd, size_t listenLenth)
 int HttpServer::AcceptSocket(int server_fd, struct sockaddr* client_addr,
                              socklen_t* client_addr_len)
 {
-    // 确保服务器套接字是非阻塞的
-    int client_fd = accept(server_fd, client_addr, client_addr_len);
-    if (client_fd == -1)
+    // 接受连接 - 使用平台无关函数
+    socket_t client_fd = accept(server_fd, client_addr, client_addr_len);
+    if (client_fd == INVALID_SOCKET_VALUE)
     {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        int lastError = platform::getLastError();
+        if (platform::isWouldBlock(lastError))
         {
             // 没有连接请求，非阻塞模式下会立即返回
             return -2; // 特殊错误码表示无连接
         }
         else
         {
-            std::cerr << "Accept失败: " << strerror(errno) << std::endl;
-            return -1;
+            platform::printError("Accept失败");
+            return INVALID_SOCKET_VALUE;
         }
     }
     return client_fd;
@@ -142,30 +150,25 @@ HttpServer::HttpServer(std::string ip_listening, uint16_t port)
     bindSocket(server_fd);
     // 监听listenfd
     listenSocket(server_fd);
-    int flags = fcntl(server_fd, F_GETFL, 0);
-    if (flags == -1)
-    {
-        std::cerr << "获取socket标志失败: " << strerror(errno) << std::endl;
-    }
-    if (fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) == -1)
-    {
-        std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
-    }
+    // 设置非阻塞模式
+    platform::setNonBlocking(server_fd);
 }
 
 HttpServer::~HttpServer()
 {
     stop();
-    close(server_fd);
+    platform::closeSocket(server_fd);
+    platform::cleanupSocketLib();
 }
 
 bool HttpServer::setReuseAddr(int& fd)
 {
     int opt = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    // 使用平台无关的socket选项设置函数
+    if (platform::setSocketOption(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
     {
-        std::cerr << "设置SO_REUSEADDR失败: " << strerror(errno) << std::endl;
-        close(fd);
+        platform::printError("设置SO_REUSEADDR失败");
+        platform::closeSocket(fd);
         fd = -1;
         return false;
     }
@@ -185,7 +188,9 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
             // 获取相对于当前目录的路径
             std::filesystem::path relative_path =
                 std::filesystem::relative(entry.path(), current_path);
-            std::string url_path = "/" + relative_path.string(); // 转换为URL路径格式
+            // 确保路径使用正斜杠（适用于URL）
+            std::string url_path = "/" + platform::toUrlPath(relative_path.string());
+            
             addCallbackFormat(Format{url_path, Format::Type::same},
                               [&static_files](serverFile& file)
                               {
@@ -198,6 +203,8 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                                   {
                                       path = &path.data()[1];
                                   }
+                                  // 转换为本地文件系统路径
+                                  path = platform::fixPath(path);
                                   auto& Localfile = static_files.get(path);
                                   std::string_view content = Localfile.read();
                                   if (content != "")

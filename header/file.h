@@ -1,4 +1,5 @@
 #pragma once
+#include "platform.h" // 添加平台兼容性头文件
 #include <corutine.hpp>
 #include <cstddef>
 #include <memory>
@@ -36,7 +37,7 @@ struct SocketFile : public co_async
     {
       public:
         friend SocketFile;
-        int fd = -1;
+        socket_t fd = INVALID_SOCKET_VALUE; // 使用跨平台的socket类型
         // read
         std::vector<char> content = {};
         mutable size_t r_left = 0;

@@ -1,18 +1,26 @@
 #include "main.hpp"
+#include "platform.h"
 #include "serverFile.h"
 #include <chrono>
 #include <corutine.hpp>
 #include <file.h>
 #include <http.h>
 #include <iostream>
-#include <openssl/bio.h>    // 包含 BIO 相关函数
-#include <openssl/buffer.h> // 包含 BUF_MEM 结构体
+#include <openssl/bio.h>
+#include <openssl/buffer.h>
 #include <openssl/evp.h>
-#include <openssl/sha.h> // 包含 SHA1() 和 SHA_DIGEST_LENGTH
+#include <openssl/sha.h>
 #include <string>
 #include <webSocketFile.h>
+
 int main()
 {
+    // 初始化Socket库 - 平台无关调用
+    if (!platform::initSocketLib()) {
+        std::cerr << "无法初始化网络库" << std::endl;
+        return 1;
+    }
+
     LocalFiles static_files;
     control con;
     auto& coManager = Co_Start_Manager::getInstance();
@@ -142,6 +150,12 @@ int main()
     coManager.manager.add(httpServer);
     coManager.manager.add(con);
     coManager.loopTime = std::chrono::nanoseconds(0);
+    
+    // 启动服务器
     coManager.start();
+
+    // 清理Socket库 - 平台无关调用
+    platform::cleanupSocketLib();
+    
     return 0;
 }
