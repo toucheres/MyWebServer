@@ -5,7 +5,7 @@
 #include <iostream>
 #include <memory>
 #include <string_view>
-#include <unistd.h>
+// #include <unistd.h>
 
 int HttpServer::eventGo()
 {
@@ -79,7 +79,7 @@ int HttpServer::makeSocket()
     // 初始化socket库 - 平台无关调用
     if (!platform::initSocketLib()) {
         std::cerr << "Failed to initialize socket library" << std::endl;
-        return INVALID_SOCKET_VALUE;
+        return static_cast<int>(INVALID_SOCKET_VALUE);
     }
     
     socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -87,7 +87,7 @@ int HttpServer::makeSocket()
     {
         platform::printError("Socket creation failed");
     }
-    return server_fd;
+    return static_cast<int>(server_fd);
 }
 
 int HttpServer::bindSocket(int server_fd)
@@ -102,7 +102,7 @@ int HttpServer::bindSocket(int server_fd)
     {
         platform::printError("Bind failed");
         platform::closeSocket(server_fd);
-        return INVALID_SOCKET_VALUE;
+        return static_cast<int>(INVALID_SOCKET_VALUE);
     }
     return server_fd;
 }
@@ -135,14 +135,15 @@ int HttpServer::AcceptSocket(int server_fd, struct sockaddr* client_addr,
         else
         {
             platform::printError("Accept失败");
-            return INVALID_SOCKET_VALUE;
+            return static_cast<int>(INVALID_SOCKET_VALUE);
         }
     }
-    return client_fd;
+    return static_cast<int>(client_fd);
 }
 
+// 修改构造函数，确保初始化顺序与声明顺序一致
 HttpServer::HttpServer(std::string ip_listening, uint16_t port)
-    : ip_listening(ip_listening), port(port), running(false), server_fd(-1)
+    : server_fd(-1), port(port), ip_listening(std::move(ip_listening)), running(false)
 {
     server_fd = makeSocket();
     setReuseAddr(server_fd);
@@ -175,6 +176,7 @@ bool HttpServer::setReuseAddr(int& fd)
     return true;
 }
 
+// 修复autoLoginFile中的std::move警告
 void HttpServer::autoLoginFile(LocalFiles& static_files)
 {
     // 获取当前工作目录
@@ -212,7 +214,7 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                                       std::string head = HttpServer::makeHttpHead(
                                           200, content, HttpServer::judge_file_type(path));
                                       file.write(std::move(head));
-                                      file.write(std::move(std::string(content)));
+                                      file.write(std::string(content)); // 移除不必要的std::move
                                   }
                               });
         }
@@ -316,11 +318,13 @@ std::string HttpServer::judge_file_type(std::string_view path)
     return "application/octet-stream"; // 默认 MIME 类型
 }
 
-std::string HttpServer::processRequest(const std::string& request)
+// 添加未使用参数的标记
+std::string HttpServer::processRequest(const std::string& request [[maybe_unused]])
 {
     return "";
 }
 
-void HttpServer::handleClient(int client_fd)
+void HttpServer::handleClient(int client_fd [[maybe_unused]])
 {
+    // 空实现
 }

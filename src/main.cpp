@@ -15,12 +15,6 @@
 
 int main()
 {
-    // 初始化Socket库 - 平台无关调用
-    if (!platform::initSocketLib()) {
-        std::cerr << "无法初始化网络库" << std::endl;
-        return 1;
-    }
-
     LocalFiles static_files;
     control con;
     auto& coManager = Co_Start_Manager::getInstance();
@@ -153,9 +147,6 @@ int main()
     
     // 启动服务器
     coManager.start();
-
-    // 清理Socket库 - 平台无关调用
-    platform::cleanupSocketLib();
     
     return 0;
 }

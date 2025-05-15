@@ -6,12 +6,13 @@
 #include <format.h>
 #include <forward_list>
 #include <functional>
-#include <netinet/in.h>
+#include <platform.h>
+//#include <netinet/in.h>
 #include <string>
-#include <sys/fcntl.h>
-#include <sys/socket.h>
+//#include <sys/fcntl.h>
+//#include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
+// #include <unistd.h>
 #include <unordered_map>
 
 class HttpServer : public co_async

@@ -67,7 +67,7 @@ struct SocketFile : public co_async
     const std::string_view read_until(
         const std::string_view delimiter = "\r\n") const; // 添加新方法
     const std::string_view read_all() const;
-    const void writeFile(std::string file);
+    void writeFile(std::string file);
     bool setNonBlocking();
     void closeIt();
     bool load(int a_fd);

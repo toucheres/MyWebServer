@@ -742,7 +742,8 @@ class Co_Manager
   public:
     void go()
     {
-        for (auto& task : tasks)
+        std::vector<co_async*> tasksCopy = tasks;
+        for (auto& task : tasksCopy)
         {
             if (task != nullptr)
             {

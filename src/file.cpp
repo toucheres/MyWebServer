@@ -7,7 +7,7 @@
 #include <memory>
 #include <string.h>
 #include <string_view>
-#include <unistd.h>
+// #include <unistd.h>
 
 // LocalFile实现
 LocalFile::LocalFile(std::string a_path) : path(std::move(a_path)), size(0)
@@ -65,7 +65,7 @@ SocketFile::~SocketFile()
     // 防止临时变量析构后close
     if (handle.context != nullptr)
     {
-        close(handle.context->fd);
+        platform::closeSocket(handle.context->fd);
     }
 }
 
@@ -139,7 +139,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                 // 读取错误 - 统一使用平台无关函数
                 if (platform::isConnectionReset(lastError))
                 {
-                    std::cerr << "客户端断开连接: " 
+                    std::cerr << "client close: " 
                               << platform::getErrorString(lastError)
                               << ", fd: " << context->fd << std::endl;
                 }
@@ -181,7 +181,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                 else
                 {
                     // 其他错误（连接关闭等）
-                    std::cerr << "写入失败: " << platform::getErrorString(lastError) << std::endl;
+                    std::cerr << "file write: " << platform::getErrorString(lastError) << std::endl;
                     context->fd_state = WRONG;
                     break;
                 }
@@ -189,7 +189,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
             else if (written == 0)
             {
                 // 连接已关闭
-                std::cerr << "连接已关闭" << std::endl;
+                std::cerr << "fd closed" << std::endl;
                 context->fd_state = WRONG;
                 break;
             }
@@ -309,9 +309,9 @@ const std::string_view SocketFile::read_until(const std::string_view delimiter) 
     }
 }
 
-const void SocketFile::writeFile(const std::string file)
+void SocketFile::writeFile(const std::string file)
 {
-    return handle.context->waitingWrites.push(file);
+    handle.context->waitingWrites.push(file);
 }
 
 bool SocketFile::setNonBlocking()
