@@ -17,8 +17,6 @@
 
 int main()
 {
-    platform::SocketLibManager lib_manager_guard; // Ensure socket library is initialized/cleaned up
-
     LocalFiles static_files;
     control con;
     auto& coManagerInstance = Co_Start_Manager::getInstance(); // Renamed for clarity
