@@ -29,3 +29,41 @@ bool serverFile::resetCorutine() {
     // 未找到对应协议的处理函数
     return false;
 }
+
+int serverFile::getAgreementType() { return protocolType; }
+
+std::map<std::string, std::string>& serverFile::getContent() { return content; }
+
+const std::map<std::string, std::string>& serverFile::getContent() const { return content; }
+
+void serverFile::write(std::string file) { socketfile.writeFile(file); }
+
+void serverFile::setCallback(std::function<void(serverFile&)> a_callback) { callback = a_callback; }
+
+int serverFile::getStatus() { return fileState; }
+
+int serverFile::handle() {
+    if (callback) {
+        callback(*this);
+    }
+    return 0;
+}
+
+void serverFile::closeIt() { socketfile.closeIt(); }
+
+bool serverFile::upgradeProtocol(int newProtocol) {
+    if (newProtocol == protocolType) return true;
+    protocolType = newProtocol;
+    return resetCorutine();
+}
+
+int serverFile::eventGo() {
+    corutine.resume();
+    return fileState;
+}
+
+Task<void, void> serverFile::httpEventloop() { 
+    // 默认实现，如果HTTP协议没有被正确初始化或覆盖，则不执行任何操作。
+    // 实际的HTTP事件循环应由HttpServerUtil::httpEventloop提供并通过registerProtocolHandler注册。
+    return {}; 
+}

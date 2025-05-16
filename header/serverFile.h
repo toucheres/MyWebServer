@@ -36,34 +36,22 @@ class serverFile : public co_async
     serverFile(int fd) : socketfile(fd) {}
     
     // 实现所有虚函数，不再是抽象类
-    int getAgreementType() { return protocolType; }
-    std::map<std::string, std::string>& getContent() { return content; }
-    const std::map<std::string, std::string>& getContent() const { return content; }
-    void write(std::string file) { socketfile.writeFile(file); }
-    void setCallback(std::function<void(serverFile&)> a_callback) { callback = a_callback; }
-    int getStatus() { return fileState; }
-    int handle() {
-        if (callback) {
-            callback(*this);
-        }
-        return 0;
-    }
-    void closeIt() { socketfile.closeIt(); }
-    bool upgradeProtocol(int newProtocol) {
-        if (newProtocol == protocolType) return true;
-        protocolType = newProtocol;
-        return resetCorutine();
-    }
+    int getAgreementType();
+    std::map<std::string, std::string>& getContent();
+    const std::map<std::string, std::string>& getContent() const;
+    void write(std::string file);
+    void setCallback(std::function<void(serverFile&)> a_callback);
+    int getStatus();
+    int handle();
+    void closeIt();
+    bool upgradeProtocol(int newProtocol);
     
     // 协程管理
     bool resetCorutine();
-    virtual int eventGo() override {
-        corutine.resume();
-        return fileState;
-    }
+    virtual int eventGo() override;
     
     // 派生类需要实现的用于协程重置的方法
-    virtual Task<void, void> httpEventloop() { return {}; } // 默认实现返回空协程
+    virtual Task<void, void> httpEventloop(); // 默认实现返回空协程
     
     virtual ~serverFile() = default;
 };
