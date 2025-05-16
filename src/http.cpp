@@ -7,24 +7,24 @@
 #include <string_view>
 // #include <unistd.h>
 
-int HttpServer::eventGo()
+EventStatus HttpServer::eventGo()
 {
-    handle.resume();
+    if (server_task_handle) server_task_handle.resume(); // Use renamed handle
     processFiles(); // 添加对文件的处理
-    return 0;
+    return EventStatus::Continue; // HttpServer typically runs indefinitely
 }
 
 // 新增：从HttpFiles移动的fileMap处理功能
-int HttpServer::processFiles()
+void HttpServer::processFiles() // Return type changed to void
 {
     std::vector<int> toRemove; // 存储需要移除的元素的键
 
-    for (auto& file : fileMap)
+    for (auto& pair : fileMap) // Iterate over pairs
     {
-        int ret = file.second->eventGo();
-        if (ret == false)
+        // Ensure file.second is not null before calling eventGo
+        if (pair.second && pair.second->eventGo() == EventStatus::Stop)
         {
-            toRemove.push_back(file.first); // 添加到移除列表
+            toRemove.push_back(pair.first); // 添加到移除列表
         }
     }
 
@@ -32,8 +32,6 @@ int HttpServer::processFiles()
     {
         fileMap.erase(fd);
     }
-
-    return 0;
 }
 
 // 新增：从HttpFiles移动的add方法
@@ -44,13 +42,12 @@ bool HttpServer::add(int fd)
 
     if (!inserted)
     {
-        it->second = ptr;
-        return false;
+        return false; // Indicate fd already exists or failed to insert
     }
     else
     {
         // 初始化HTTP协议
-        it->second->protocolType = Agreement::HTTP;
+        it->second->upgradeProtocol(Protocol::HTTP); // Use upgradeProtocol for clarity
         it->second->resetCorutine();
 
         it->second->setCallback(
@@ -143,9 +140,13 @@ int HttpServer::AcceptSocket(int server_fd, struct sockaddr* client_addr,
 
 // 修改构造函数，确保初始化顺序与声明顺序一致
 HttpServer::HttpServer(std::string ip_listening, uint16_t port)
-    : server_fd(-1), port(port), ip_listening(std::move(ip_listening)), running(false)
+    : server_fd(-1), port(port), ip_listening(std::move(ip_listening)), 
+      running(false), server_task_handle(start()) // Initialize renamed handle
 {
     server_fd = makeSocket();
+    if (server_fd == static_cast<int>(INVALID_SOCKET_VALUE)) {
+        return;
+    }
     setReuseAddr(server_fd);
     // 地址绑定到listenfd
     bindSocket(server_fd);
@@ -227,7 +228,6 @@ Task<void, void> HttpServer::start()
     size_t size_client = sizeof(client);
     while (1)
     {
-        manager.go();
         int connfd = AcceptSocket(server_fd, &client, (socklen_t*)(&size_client));
         if (connfd == -2)
         {
@@ -272,14 +272,3 @@ int HttpServer::removeCallbackFormat(const Format& format)
         });
     return removed_count;
 }
-
-// 添加未使用参数的标记
-// std::string HttpServer::processRequest(const std::string& request [[maybe_unused]])
-// {
-//     return "";
-// }
-
-// void HttpServer::handleClient(int client_fd [[maybe_unused]])
-// {
-//     // 空实现
-// }

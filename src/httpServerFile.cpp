@@ -4,7 +4,6 @@
 #include <string>
 #include <filesystem>
 #include <unordered_map>
-#include <fstream>
 #include <sstream>
 
 // 初始化静态成员，自动注册HTTP协议处理函数
@@ -12,14 +11,14 @@ bool HttpServerUtil::autoRegistered = HttpServerUtil::initialize();
 
 // 初始化方法，注册HTTP协议处理函数
 bool HttpServerUtil::initialize() {
-    return serverFile::registerProtocolHandler(Agreement::HTTP, HttpServerUtil::httpEventloop);
+    return serverFile::registerProtocolHandler(Protocol::HTTP, HttpServerUtil::httpEventloop);
 }
 
 // HTTP协议的事件循环 - 静态方法
 Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
 {
     // 解析状态相关变量
-    ParseState state = REQUEST_LINE;
+    ParseState state = ParseState::REQUEST_LINE; // Use enum class
     std::string method;
     std::string path;
     std::string version;
@@ -27,26 +26,31 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
     size_t body_read = 0;
     std::string body_buffer;
 
-    while (self->fileState)
+    while (self->getStatus()) // Use getStatus()
     {
-        int ret = self->socketfile.eventGo();
-        if (ret == -1)
+        // Access SocketFile through serverFile's getter
+        SocketFile& sfile = self->getSocketFile();
+        EventStatus socketEventStatus = sfile.eventGo();
+
+        if (socketEventStatus == EventStatus::Stop)
         {
-            self->fileState = false;
+            self->setFileState(false); // Update serverFile's state
             co_yield {};
+            continue; // Skip further processing if socket stopped
+        }
+        
+        // Check status via SocketFile's getter
+        if (sfile.getSocketStatus() == SocketStatus::WRONG)
+        {
+            self->setFileState(false); // Update serverFile's state
+            co_yield {};
+            continue; // Skip further processing
         }
 
-        if ((!self->socketfile.handle.context) ||
-            (self->socketfile.handle.context->fd_state == SocketFile::WRONG))
-        {
-            self->fileState = false;
-            co_yield {};
-        }
-
-        std::string_view tp = self->socketfile.read_line();
+        std::string_view tp = sfile.read_line(); // Use sfile
         switch (state)
         {
-        case REQUEST_LINE:
+        case ParseState::REQUEST_LINE: // Use enum class
             if (tp.empty())
             {
                 co_yield {};
@@ -64,16 +68,16 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                     version =
                         std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
 
-                    self->content["method"] = method;
-                    self->content["path"] = path;
-                    self->content["version"] = version;
+                    self->getContent()["method"] = method;
+                    self->getContent()["path"] = path;
+                    self->getContent()["version"] = version;
 
-                    state = HEADERS;
+                    state = ParseState::HEADERS; // Use enum class
                 }
             }
             break;
 
-        case HEADERS:
+        case ParseState::HEADERS: // Use enum class
             if (tp.empty())
             {
                 co_yield {};
@@ -83,28 +87,28 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             {
                 if (method == "POST")
                 {
-                    auto it = self->content.find("content-length");
-                    if (it != self->content.end())
+                    auto it = self->getContent().find("content-length");
+                    if (it != self->getContent().end())
                     {
                         try
                         {
                             content_length = std::stoul(std::string(it->second));
-                            state = BODY;
+                            state = ParseState::BODY; // Use enum class
                         }
                         catch (...)
                         {
                             content_length = 0;
-                            state = COMPLETE;
+                            state = ParseState::COMPLETE; // Use enum class
                         }
                     }
                     else
                     {
-                        state = COMPLETE;
+                        state = ParseState::COMPLETE; // Use enum class
                     }
                 }
                 else
                 {
-                    state = COMPLETE;
+                    state = ParseState::COMPLETE; // Use enum class
                 }
             }
             else
@@ -123,12 +127,12 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                         val = std::string(tp.substr(index + 2, val_len));
                     }
 
-                    self->content.try_emplace(key, val);
+                    self->getContent().try_emplace(key, val);
                 }
             }
             break;
 
-        case BODY:
+        case ParseState::BODY: // Use enum class
             if (tp.empty())
             {
                 co_yield {};
@@ -141,21 +145,20 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
 
                 if (body_read >= content_length)
                 {
-                    self->content.try_emplace("postcontent", body_buffer);
-                    state = COMPLETE;
+                    self->getContent().try_emplace("postcontent", body_buffer);
+                    state = ParseState::COMPLETE; // Use enum class
                 }
             }
             break;
 
-        case COMPLETE:
+        case ParseState::COMPLETE: // Use enum class
         {
-            if (self->socketfile.handle.context &&
-                self->socketfile.handle.context->fd_state != SocketFile::WRONG)
+            if (sfile.getSocketStatus() != SocketStatus::WRONG) // Check sfile status
             {
                 self->handle();
                 
                 // 只重置必要的状态变量
-                state = REQUEST_LINE;
+                state = ParseState::REQUEST_LINE; // Use enum class
                 // method.clear();
                 // path.clear();
                 // version.clear();
@@ -219,28 +222,26 @@ std::string HttpServerUtil::judge_file_type(std::string_view path)
 
 // HttpResponse实现
 HttpResponse::HttpResponse(size_t status, std::string httptype, std::string servername)
+    : http_version_(std::move(httptype)), status_code_(status)
 {
-    // 初始化基本的HTTP头部
-    add("Status", std::to_string(status) + " " + 
-        (status_num_string.count(status) > 0 ? status_num_string[status] : ""));
-    add("Server", servername);
-    add("Connection", "keep-alive");
+    if (status_num_string.count(status)) {
+        reason_phrase_ = status_num_string[status];
+    }
+    headers_["Server"] = std::move(servername);
+    headers_["Connection"] = "keep-alive";
 }
 
-HttpResponse& HttpResponse::add(std::string key, std::string val)
+HttpResponse& HttpResponse::addHeader(std::string key, std::string val)
 {
-    // 将键值对转换为HTTP头部格式并添加到内容中
-    content.append(key + ": " + val + "\r\n");
+    headers_[std::move(key)] = std::move(val);
     return *this;
 }
 
 HttpResponse& HttpResponse::with_content(std::string new_content, std::string type)
 {
-    // 添加Content-Type和Content-Length头部，然后添加正文
-    add("Content-Type", type);
-    add("Content-Length", std::to_string(new_content.length()));
-    content.append("\r\n"); // 头部与正文之间的空行
-    content.append(new_content);
+    body_ = std::move(new_content);
+    headers_["Content-Type"] = std::move(type);
+    headers_["Content-Length"] = std::to_string(body_.length());
     return *this;
 }
 
@@ -254,22 +255,27 @@ HttpResponse HttpResponse::formLocalFile(std::string path, std::string type)
 {
     // 使用文件缓存获取文件内容
     auto& fileCache = getFileCache();
-    LocalFile& file = fileCache.get(path);
-    std::string_view content = file.read();
+    LocalFile& file = fileCache.get(platform::fixPath(path)); // Fix path for local system
+    std::string_view file_content_view = file.read(); // Renamed to avoid conflict
     
-    HttpResponse response{200};
-    
-    if (!content.empty()) {
+    if (!file_content_view.empty()) {
         // 文件存在且有内容
-        response = HttpResponse(200);
-        response.with_content(std::string(content), type);
+        HttpResponse response(200);
+        response.with_content(std::string(file_content_view), type);
+        return response;
     } else {
         // 文件不存在或为空
-        response = HttpResponse(404);
-        response.with_content("File not found: " + path, "text/plain");
+        HttpResponse response(404);
+        // Try to load a custom 404.html page
+        LocalFile& not_found_page = fileCache.get(platform::fixPath("404.html"));
+        std::string_view not_found_content = not_found_page.read();
+        if (!not_found_content.empty()) {
+            response.with_content(std::string(not_found_content), "text/html;charset=utf-8");
+        } else {
+            response.with_content("File not found: " + path, "text/plain;charset=utf-8");
+        }
+        return response;
     }
-    
-    return response;
 }
 
 HttpResponse HttpResponse::formLocalFile(std::string path)
@@ -280,27 +286,12 @@ HttpResponse HttpResponse::formLocalFile(std::string path)
 
 HttpResponse::operator std::string()
 {
-    // 构建完整的HTTP响应字符串
-    std::string full_response = "";
-    
-    // 提取状态行
-    size_t statusPos = content.find("Status: ");
-    if (statusPos != std::string::npos) {
-        size_t endPos = content.find("\r\n", statusPos);
-        if (endPos != std::string::npos) {
-            // 获取状态值
-            std::string statusValue = content.substr(statusPos + 8, endPos - (statusPos + 8));
-            
-            // 构建HTTP状态行
-            full_response = "HTTP/1.1 " + statusValue + "\r\n";
-            
-            // 移除Status行，因为它不是标准HTTP头
-            content.erase(statusPos, endPos - statusPos + 2);
-        }
+    std::ostringstream oss;
+    oss << http_version_ << " " << status_code_ << " " << reason_phrase_ << "\r\n";
+    for (const auto& header : headers_) {
+        oss << header.first << ": " << header.second << "\r\n";
     }
-    
-    // 添加剩余的头部和内容
-    full_response.append(content);
-    
-    return full_response;
+    oss << "\r\n";
+    oss << body_;
+    return oss.str();
 }

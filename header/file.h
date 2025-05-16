@@ -10,6 +10,14 @@
 #include <vector>
 struct LocalFiles;
 struct SocketFiles;
+
+enum class SocketStatus // Moved and changed to enum class
+{
+    UNKNOWN = -1,
+    OK = 0,
+    WRONG = 1,
+};
+
 struct LocalFile
 {
     friend LocalFiles;
@@ -31,6 +39,8 @@ struct LocalFile
 struct SocketFile : public co_async
 {
     friend SocketFiles;
+    friend class HttpServerUtil; // Allow access for event loops
+    friend class WebSocketUtil;  // Allow access for event loops
 
   private:
     class CONTEXT
@@ -54,13 +64,13 @@ struct SocketFile : public co_async
 
         std::queue<writingFile> waitingWrites;
 
-        int fd_state = OK;
+        SocketStatus socket_status = SocketStatus::OK; // Changed from fd_state
     };
     static Task<> eventfun(std::shared_ptr<CONTEXT> context);
+    Task_Away<CONTEXT> handle_ = eventfun; // Made private, renamed
 
   public:
-    Task_Away<CONTEXT> handle = eventfun;
-    virtual int eventGo() final;
+    virtual EventStatus eventGo() final; // Changed return type
     const std::string_view read_added() const;
     const std::string_view read_num(size_t num) const;
     const std::string_view read_line() const;
@@ -76,20 +86,16 @@ struct SocketFile : public co_async
     SocketFile() = default;
     SocketFile(SocketFile&& move);
     SocketFile& operator=(SocketFile&& move);
-    enum fd_state
-    {
-        UNKOWN = -1,
-        OK = 0,
-        WRONG = 1,
-    };
-    // SocketFile(const SocketFile& copy);
+
+    SocketStatus getSocketStatus() const; // Getter for socket_status
 };
+
 struct async_in_out : public co_async
 {
   private:
     SocketFile in{STDIN_FILENO};
     SocketFile out{STDOUT_FILENO};
-    virtual int eventGo();
+    virtual EventStatus eventGo() override; // Changed return type
 
   public:
     async_in_out();
@@ -100,6 +106,7 @@ struct async_in_out : public co_async
     void writeFile(std::string file);
     static async_in_out& getInstance();
 };
+
 struct LocalFiles
 {
   private:
@@ -109,13 +116,14 @@ struct LocalFiles
     bool add(std::string& path);
     LocalFile& get(const std::string& path);
 };
+
 struct SocketFiles : public co_async
 {
   private:
     std::unordered_map<int, SocketFile> fileMap;
 
   public:
-    virtual int eventGo() override;
+    virtual EventStatus eventGo() override; // Changed return type
     bool add(int fd);
     SocketFile& get(int fd);
     const std::unordered_map<int, SocketFile>& getMap();

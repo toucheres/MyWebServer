@@ -13,16 +13,16 @@ bool WebSocketUtil::autoRegistered = WebSocketUtil::initialize();
 
 // 初始化方法，注册WebSocket协议处理函数
 bool WebSocketUtil::initialize() {
-    return serverFile::registerProtocolHandler(Agreement::WebSocket, WebSocketUtil::wsEventloop);
+    return serverFile::registerProtocolHandler(Protocol::WebSocket, WebSocketUtil::wsEventloop);
 }
 
 // WebSocket帧操作
-std::string WebSocketUtil::makeWebSocketFrame(bool fin, uint8_t opcode, const std::string& payload, bool masked)
+std::string WebSocketUtil::makeWebSocketFrame(bool fin, WebSocketOpcode opcode, const std::string& payload, bool masked)
 {
     std::string frame;
     
     // 第一个字节: FIN位和操作码
-    uint8_t byte1 = (fin ? 0x80 : 0x00) | (opcode & 0x0F);
+    uint8_t byte1 = (fin ? 0x80 : 0x00) | (static_cast<uint8_t>(opcode) & 0x0F);
     frame.push_back(byte1);
     
     // 第二个字节: MASK位和负载长度
@@ -79,8 +79,8 @@ std::string WebSocketUtil::parseWebSocketFrame(const std::string& frame)
     
     // 读取第一个字节，获取FIN位和操作码
     uint8_t byte1 = static_cast<uint8_t>(frame[0]);
-    bool fin = (byte1 & 0x80) != 0;
-    uint8_t opcode = byte1 & 0x0F;
+    // bool fin = (byte1 & 0x80) != 0; // fin not used in this simplified parser
+    // uint8_t opcode = byte1 & 0x0F; // opcode not used
     
     // 读取第二个字节，获取MASK位和负载长度
     uint8_t byte2 = static_cast<uint8_t>(frame[1]);
@@ -211,16 +211,17 @@ bool WebSocketUtil::shouldbeUpdataToWS(const serverFile& httpfile) {
 
 // WebSocket事件循环
 Task<void, void> WebSocketUtil::wsEventloop(serverFile* self) {
-    while (self->fileState) {
-        int ret = self->socketfile.eventGo();
-        if (ret == -1 || 
-            (!self->socketfile.handle.context) || 
-            (self->socketfile.handle.context->fd_state == SocketFile::WRONG)) {
-            self->fileState = false;
+    while (self->getStatus()) {
+        SocketFile& sfile = self->getSocketFile();
+        EventStatus socketEventStatus = sfile.eventGo();
+        
+        if (socketEventStatus == EventStatus::Stop || sfile.getSocketStatus() == SocketStatus::WRONG) {
+            self->setFileState(false);
             co_yield {};
+            continue; 
         }
         
-        std::string_view data = self->socketfile.read_added();
+        std::string_view data = sfile.read_added();
         if (!data.empty()) {
             // 解析WebSocket帧
             std::string frameData(data.data(), data.size());
@@ -228,7 +229,7 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self) {
             
             // 存储消息内容
             if (!message.empty()) {
-                self->content["message"] = message;
+                self->getContent()["message"] = message;
                 
                 // 调用回调处理消息
                 self->handle();
@@ -241,35 +242,35 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self) {
 }
 
 // WebSocketResponse实现
-WebSocketResponse::WebSocketResponse(uint8_t opcode, bool fin, bool masked)
-    : opcode(opcode), fin(fin), masked(masked)
+WebSocketResponse::WebSocketResponse(WebSocketUtil::WebSocketOpcode opcode, bool fin, bool masked)
+    : opcode_(opcode), fin_(fin), masked_(masked)
 {
 }
 
 WebSocketResponse& WebSocketResponse::with_content(const std::string& new_content)
 {
-    content = new_content;
+    content_ = new_content;
     return *this;
 }
 
 WebSocketResponse WebSocketResponse::text(const std::string& content)
 {
-    return WebSocketResponse(WebSocketUtil::TEXT).with_content(content);
+    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::TEXT).with_content(content);
 }
 
 WebSocketResponse WebSocketResponse::binary(const std::string& content)
 {
-    return WebSocketResponse(WebSocketUtil::BINARY).with_content(content);
+    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::BINARY).with_content(content);
 }
 
 WebSocketResponse WebSocketResponse::ping(const std::string& content)
 {
-    return WebSocketResponse(WebSocketUtil::PING).with_content(content);
+    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::PING).with_content(content);
 }
 
 WebSocketResponse WebSocketResponse::pong(const std::string& content)
 {
-    return WebSocketResponse(WebSocketUtil::PONG).with_content(content);
+    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::PONG).with_content(content);
 }
 
 WebSocketResponse WebSocketResponse::close(uint16_t code, const std::string& reason)
@@ -282,11 +283,11 @@ WebSocketResponse WebSocketResponse::close(uint16_t code, const std::string& rea
         // 添加关闭原因
         payload.append(reason);
     }
-    return WebSocketResponse(WebSocketUtil::CLOSE).with_content(payload);
+    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::CLOSE).with_content(payload);
 }
 
 WebSocketResponse::operator std::string() const
 {
     // 利用WebSocketUtil的createWebSocketFrame方法
-    return WebSocketUtil::makeWebSocketFrame(fin, opcode, content, masked);
+    return WebSocketUtil::makeWebSocketFrame(fin_, opcode_, content_, masked_);
 }

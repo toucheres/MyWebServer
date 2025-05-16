@@ -7,12 +7,11 @@
 #include <memory>
 #include <string.h>
 #include <string_view>
-// #include <unistd.h>
 
 // LocalFile实现
 LocalFile::LocalFile(std::string a_path) : path(std::move(a_path)), size(0)
 {
-    load(path);
+    load(this->path); // Use member path
 }
 
 LocalFile::LocalFile(LocalFile&& move)
@@ -63,44 +62,46 @@ SocketFile::SocketFile(int a_fd)
 SocketFile::~SocketFile()
 {
     // 防止临时变量析构后close
-    if (handle.context != nullptr)
+    if (handle_.get_context() != nullptr) // Use private member
     {
-        platform::closeSocket(handle.context->fd);
+        platform::closeSocket(handle_.get_context()->fd);
     }
 }
 
-SocketFile::SocketFile(SocketFile&& move) : handle(std::move(move.handle))
+SocketFile::SocketFile(SocketFile&& move) : handle_(std::move(move.handle_)) // Use private member
 {
-    move.handle.context = nullptr;
+    move.handle_.get_context() = nullptr; // Access context via get_context() if needed, or ensure Task_Away handles this
 }
 
 SocketFile& SocketFile::operator=(SocketFile&& move)
 {
-    this->handle = std::move(move.handle);
+    if (this != &move) {
+        this->handle_ = std::move(move.handle_); // Use private member
+    }
     return *this;
 }
 
-// SocketFile::SocketFile(const SocketFile& copy)
-//     : handle(copy.handle) {
-// }
-
 bool SocketFile::load(int a_fd)
 {
-    handle.get_context()->fd = a_fd;
-    handle.get_context()->r_left = 0;
-    handle.get_context()->r_right = 0;
-    handle.get_context()->content.resize(4096); // 预分配缓冲区
+    handle_.get_context()->fd = a_fd;
+    handle_.get_context()->r_left = 0;
+    handle_.get_context()->r_right = 0;
+    handle_.get_context()->content.resize(4096); // 预分配缓冲区
+    handle_.get_context()->socket_status = SocketStatus::OK; // Initialize status
     return true;
 }
+
 void SocketFile::closeIt()
 {
-    handle.get_context()->fd_state = WRONG;
-    this->eventGo();
+    if (handle_.get_context()) {
+      handle_.get_context()->socket_status = SocketStatus::WRONG;
+    }
+    this->eventGo(); // eventGo will handle the stop
 }
 
 Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
 {
-    while (true)
+    while (context->socket_status == SocketStatus::OK) // Check status
     {
         // 检查缓冲区是否需要扩容
         if (context->r_right >= context->content.size())
@@ -123,7 +124,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         }
         else if (n == 0)
         {
-            context->fd_state = WRONG;
+            context->socket_status = SocketStatus::WRONG; // Update status
             break;
         }
         else if (n < 0)
@@ -149,8 +150,9 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                               << platform::getErrorString(lastError)
                               << ", fd: " << context->fd << std::endl;
                 }
-                context->fd_state = WRONG;
-                co_yield {};
+                context->socket_status = SocketStatus::WRONG; // Update status
+                co_yield {}; // Yield to allow state propagation before breaking loop
+                break; // Break from while loop on error
             }
         }
         
@@ -182,7 +184,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                 {
                     // 其他错误（连接关闭等）
                     std::cerr << "file write: " << platform::getErrorString(lastError) << std::endl;
-                    context->fd_state = WRONG;
+                    context->socket_status = SocketStatus::WRONG; // Update status
                     break;
                 }
             }
@@ -190,7 +192,7 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
             {
                 // 连接已关闭
                 std::cerr << "fd closed" << std::endl;
-                context->fd_state = WRONG;
+                context->socket_status = SocketStatus::WRONG; // Update status
                 break;
             }
             else
@@ -208,39 +210,44 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
     co_return;
 }
 
-int SocketFile::eventGo()
+EventStatus SocketFile::eventGo()
 {
-    if (!handle.context || handle.context->fd_state == WRONG)
+    if (!handle_.get_context() || handle_.get_context()->socket_status == SocketStatus::WRONG)
     {
-        return -1;
+        return EventStatus::Stop;
     }
-    handle.resume();
-    return 0;
+    handle_.resume();
+    // Status might be updated by eventfun after resume
+    if (!handle_.get_context() || handle_.get_context()->socket_status == SocketStatus::WRONG)
+    {
+        return EventStatus::Stop;
+    }
+    return EventStatus::Continue;
 }
 
 const std::string_view SocketFile::read_added() const
 {
-    if (handle.get_context()->r_left >= handle.get_context()->r_right)
+    if (!handle_.get_context() || handle_.get_context()->r_left >= handle_.get_context()->r_right)
     {
         return std::string_view();
     }
 
-    std::string_view result(handle.get_context()->content.data() + handle.get_context()->r_left,
-                            handle.get_context()->r_right - handle.get_context()->r_left);
-    handle.get_context()->r_left = handle.get_context()->r_right;
+    std::string_view result(handle_.get_context()->content.data() + handle_.get_context()->r_left,
+                            handle_.get_context()->r_right - handle_.get_context()->r_left);
+    handle_.get_context()->r_left = handle_.get_context()->r_right;
     return result;
 }
 
 const std::string_view SocketFile::read_num(size_t num) const
 {
-    if (handle.get_context()->r_left - handle.get_context()->r_right >= num)
+    if (!handle_.get_context() || handle_.get_context()->r_left - handle_.get_context()->r_right < num) // Corrected logic
     {
-        auto tp = std::string_view{
-            handle.get_context()->content.data() + handle.get_context()->r_left, num};
-        handle.get_context()->r_left += num;
-        return tp;
+       return "";
     }
-    return "";
+    auto tp = std::string_view{
+            handle_.get_context()->content.data() + handle_.get_context()->r_left, num};
+    handle_.get_context()->r_left += num;
+    return tp;
 }
 
 const std::string_view SocketFile::read_line() const
@@ -250,14 +257,16 @@ const std::string_view SocketFile::read_line() const
 
 const std::string_view SocketFile::read_all() const
 {
-    return std::string_view(handle.get_context()->content.data(), handle.get_context()->r_right);
+    if (!handle_.get_context()) return "";
+    return std::string_view(handle_.get_context()->content.data(), handle_.get_context()->r_right);
 }
 
 const std::string_view SocketFile::read_until(const std::string_view delimiter) const
 {
+    if (!handle_.get_context()) return "";
     //[bug]有问题，像是pg导致的
-    size_t& r_left = this->handle.get_context()->r_left;
-    size_t& r_right = this->handle.get_context()->r_right;
+    size_t& r_left = this->handle_.get_context()->r_left;
+    size_t& r_right = this->handle_.get_context()->r_right;
 
     // 确保有足够的数据可读
     if (r_right - r_left < delimiter.length())
@@ -274,7 +283,7 @@ const std::string_view SocketFile::read_until(const std::string_view delimiter) 
             bool match = true;
             for (size_t j = 0; j < delimiter.length(); j++)
             {
-                if (this->handle.get_context()->content[i + j] != delimiter[j])
+                if (this->handle_.get_context()->content[i + j] != delimiter[j])
                 {
                     match = false;
                     break;
@@ -295,7 +304,7 @@ const std::string_view SocketFile::read_until(const std::string_view delimiter) 
 
             // 创建包含结束符的字符串视图
             auto result =
-                std::string_view(&this->handle.get_context()->content[r_left], result_length);
+                std::string_view(&this->handle_.get_context()->content[r_left], result_length);
 
             // 更新读取位置
             r_left = found_pos + delimiter.length();
@@ -311,12 +320,19 @@ const std::string_view SocketFile::read_until(const std::string_view delimiter) 
 
 void SocketFile::writeFile(const std::string file)
 {
-    handle.context->waitingWrites.push(file);
+    if (handle_.get_context())
+        handle_.get_context()->waitingWrites.push(file);
 }
 
 bool SocketFile::setNonBlocking()
 {
-    return platform::setNonBlocking(this->handle.context->fd);
+    if (!handle_.get_context()) return false;
+    return platform::setNonBlocking(this->handle_.get_context()->fd);
+}
+
+SocketStatus SocketFile::getSocketStatus() const {
+    if (!handle_.get_context()) return SocketStatus::UNKNOWN;
+    return handle_.get_context()->socket_status;
 }
 
 // LocalFiles实现
@@ -344,7 +360,7 @@ LocalFile& LocalFiles::get(const std::string& path)
 // SocketFiles实现
 bool SocketFiles::add(int fd)
 {
-    auto [it, inserted] = fileMap.try_emplace(fd, SocketFile{fd});
+    auto [it, inserted] = fileMap.try_emplace(fd, fd); // SocketFile constructor takes int
     return inserted;
 }
 
@@ -357,13 +373,13 @@ const std::unordered_map<int, SocketFile>& SocketFiles::getMap()
 {
     return fileMap;
 }
-int SocketFiles::eventGo()
+
+EventStatus SocketFiles::eventGo()
 {
     for (auto it = fileMap.begin(); it != fileMap.end();)
     {
-        if (it->second.eventGo() == -1)
+        if (it->second.eventGo() == EventStatus::Stop)
         {
-            platform::closeSocket(it->second.handle.context->fd);
             it = fileMap.erase(it);
         }
         else
@@ -371,8 +387,9 @@ int SocketFiles::eventGo()
             ++it;
         }
     }
-    return 0;
+    return EventStatus::Continue; // SocketFiles itself continues to manage
 }
+
 SocketFile::CONTEXT::writingFile::writingFile(std::string&& move)
 {
     this->waitingWrite = std::move(move);
@@ -384,33 +401,38 @@ SocketFile::CONTEXT::writingFile::writingFile(const std::string& copy)
     w_right = waitingWrite.length();
 }
 
-int async_in_out::eventGo()
+EventStatus async_in_out::eventGo()
 {
     in.eventGo();
     out.eventGo();
-    // std::cout << "in now:" << in.read_all();
-    return 0;
+    return EventStatus::Continue; // async_in_out continues unless explicitly stopped
 }
+
 async_in_out::async_in_out()
 {
-    Co_Start_Manager::getInstance().manager.add(this);
+    Co_Start_Manager::getInstance().getManager().add(this); // Use getter for manager
 }
+
 std::string_view async_in_out::read_added()
 {
     return in.read_added();
 }
+
 std::string_view async_in_out::read_all()
 {
     return in.read_all();
 }
+
 std::string_view async_in_out::read_until()
 {
     return in.read_until("\n");
 }
+
 std::string_view async_in_out::read_line()
 {
     return in.read_until("\n");
 }
+
 void async_in_out::writeFile(std::string file)
 {
     return out.writeFile(file);

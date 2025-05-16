@@ -7,12 +7,20 @@
 #include <thread>
 #include <variant>
 #include <vector>
+
+enum class EventStatus
+{
+    Continue,
+    Stop
+};
+
 class co_async
 {
   public:
-    virtual int eventGo() = 0;
+    virtual EventStatus eventGo() = 0;
     virtual ~co_async() = default;
 };
+
 // 泛型协程任务，可以返回任意类型T的值
 template <typename RET = void, typename YIELD = void> class Task
 {
@@ -24,6 +32,7 @@ template <typename RET = void, typename YIELD = void> class Task
         RET result;
         YIELD yield_result; // 存储yield的值
         std::exception_ptr exception = nullptr;
+        std::coroutine_handle<> continuation = nullptr;
 
       public:
         Task get_return_object() noexcept
@@ -97,13 +106,18 @@ template <typename RET = void, typename YIELD = void> class Task
             }
             return yield_result;
         }
-        std::coroutine_handle<> continuation = nullptr;
+
+        friend class Task<RET, YIELD>;
     };
 
     // 特殊的协程等待器，用于在一个协程中等待另一个协程完成
     struct Awaiter
     {
+      private:
         std::coroutine_handle<promise_type> handle;
+
+      public:
+        Awaiter(std::coroutine_handle<promise_type> h) : handle(h) {}
 
         bool await_ready() const noexcept
         {
@@ -208,6 +222,7 @@ template <typename YIELD> class Task<void, YIELD>
         YIELD yield_result;
         bool is_yield_value = false;
         std::exception_ptr exception = nullptr;
+        std::coroutine_handle<> continuation = nullptr;
 
       public:
         Task get_return_object() noexcept
@@ -282,13 +297,17 @@ template <typename YIELD> class Task<void, YIELD>
             return is_yield_value;
         }
 
-        std::coroutine_handle<> continuation = nullptr;
+        friend class Task<void, YIELD>;
     };
 
     // void类型的等待器
     struct Awaiter
     {
+      private:
         std::coroutine_handle<promise_type> handle;
+
+      public:
+        Awaiter(std::coroutine_handle<promise_type> h) : handle(h) {}
 
         bool await_ready() const noexcept
         {
@@ -402,6 +421,7 @@ template <> class Task<void, void>
       private:
         std::exception_ptr exception = nullptr;
         bool is_yield_value = false;
+        std::coroutine_handle<> continuation = nullptr;
 
       public:
         Task get_return_object() noexcept
@@ -467,13 +487,17 @@ template <> class Task<void, void>
             return is_yield_value;
         }
 
-        std::coroutine_handle<> continuation = nullptr;
+        friend class Task<void, void>;
     };
 
     // void类型的等待器
     struct Awaiter
     {
+      private:
         std::coroutine_handle<promise_type> handle;
+
+      public:
+        Awaiter(std::coroutine_handle<promise_type> h) : handle(h) {}
 
         bool await_ready() const noexcept
         {
@@ -584,8 +608,11 @@ template <class CONTEXT = void> class Task_Local : public CONTEXT
 {
   public:
     virtual Task<> co_fun() = 0;
-    Task<void, void> handle = nullptr;
 
+  private:
+    Task<void, void> task_handle = nullptr;
+
+  public:
     // 默认构造函数
     Task_Local() noexcept = default;
 
@@ -598,14 +625,14 @@ template <class CONTEXT = void> class Task_Local : public CONTEXT
     // nullptr赋值
     Task_Local& operator=(std::nullptr_t) noexcept
     {
-        handle = nullptr;
+        task_handle = nullptr;
         return *this;
     }
 
     // bool操作符
     operator bool()
     {
-        return (bool)handle;
+        return (bool)task_handle;
     }
 
     // 禁止拷贝
@@ -615,37 +642,37 @@ template <class CONTEXT = void> class Task_Local : public CONTEXT
     // 协程操作接口
     bool done() const noexcept
     {
-        return (!(bool)handle) || handle.done();
+        return (!(bool)task_handle) || task_handle.done();
     }
 
     void resume()
     {
-        if (!handle)
+        if (!task_handle)
         {
-            handle = co_fun();
+            task_handle = co_fun();
         }
-        handle.resume();
+        task_handle.resume();
     }
 
     void get_result()
     {
-        if (handle)
+        if (task_handle)
         {
-            handle.get_result();
+            task_handle.get_result();
         }
     }
 
     // 检查是否是yield状态
     bool is_yield() const noexcept
     {
-        if (!(bool)handle)
+        if (!(bool)task_handle)
             return false;
-        return handle.is_yield();
+        return task_handle.is_yield();
     }
 };
 template <class CONTEXT> class Task_Away
 {
-  public:
+  private:
     std::shared_ptr<CONTEXT> context;
     Task<void, void> corutine;
 
@@ -737,6 +764,7 @@ template <class CONTEXT> class Task_Away
 
 class Co_Manager
 {
+  private:
     std::vector<co_async*> tasks;
 
   public:
@@ -747,7 +775,10 @@ class Co_Manager
         {
             if (task != nullptr)
             {
-                task->eventGo();
+                if (task->eventGo() == EventStatus::Stop)
+                {
+                    remove(task);
+                }
             }
         }
     }
@@ -773,11 +804,19 @@ class Co_Manager
         return true;
     }
 };
+
 class Co_Start_Manager
 {
-  public:
+  private:
     std::chrono::nanoseconds loopTime{1000000}; // 默认1毫秒
     Co_Manager manager;
+    Co_Start_Manager() = default;
+    Co_Start_Manager(Co_Start_Manager&&) = delete;
+    Co_Start_Manager(const Co_Start_Manager&) = delete;
+    Co_Start_Manager& operator=(Co_Start_Manager&&) = delete;
+    Co_Start_Manager& operator=(const Co_Start_Manager&) = delete;
+
+  public:
     // 设置循环间隔
     template <typename Rep, typename Period>
     void setLoopInterval(const std::chrono::duration<Rep, Period>& interval)
@@ -804,10 +843,5 @@ class Co_Start_Manager
         return instance;
     }
 
-  private:
-    Co_Start_Manager() = default;
-    Co_Start_Manager(Co_Start_Manager&&) = delete;
-    Co_Start_Manager(const Co_Start_Manager&) = delete;
-    Co_Start_Manager& operator=(Co_Start_Manager&&) = delete;
-    Co_Start_Manager& operator=(const Co_Start_Manager&) = delete;
+    Co_Manager& getManager() { return manager; }
 };

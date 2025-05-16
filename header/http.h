@@ -19,20 +19,20 @@ class HttpServer : public co_async
     uint16_t port;
     std::string ip_listening;
     bool running;
-    Co_Manager manager;
-    int eventGo() override;
+    Co_Manager manager; // This manager is specific to HttpServer for its client connections
+    EventStatus eventGo() override; // Changed return type
     int makeSocket();
     int bindSocket(int server_fd);
     bool listenSocket(int server_fd, size_t listenLenth = 5);
     int AcceptSocket(int server_fd, struct sockaddr* client_addr, socklen_t* client_addr_len);
     bool setReuseAddr(int& fd);
     Task<void, void> start();
-    Task<void, void> handle = start();
+    Task<void, void> server_task_handle; // Renamed from 'handle'
     //std::string processRequest(const std::string& request);
     std::forward_list<std::pair<Format, std::function<void(serverFile&)>>> callbacks_format;
+    std::unordered_map<int, std::shared_ptr<serverFile>> fileMap; // Client connections
 
   public:
-    std::unordered_map<int, std::shared_ptr<serverFile>> fileMap;
     void autoLoginFile(LocalFiles& static_files);
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
@@ -42,5 +42,5 @@ class HttpServer : public co_async
     
     // 从HttpFiles移动过来的方法
     bool add(int fd);
-    int processFiles(); // 替代原HttpFiles的eventGo
+    void processFiles(); // Changed return type to void
 };

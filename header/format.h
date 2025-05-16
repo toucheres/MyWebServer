@@ -40,10 +40,10 @@ class Format
     bool operator==(const Format& in) const;
     bool operator<(const Format& in) const;
 
-    std::string format = "";
+    std::string format_str = ""; // Renamed to avoid conflict with 'format' namespace/std::format
 
   private:
-    Format::Type type;
+    Format::Type type_; // Renamed and made private
     
     // 工具方法：使用scanf格式解析字符串
     std::optional<ParseResult> parseScanf(const std::string& str) const;

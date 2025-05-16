@@ -25,8 +25,15 @@
 // return response;
 struct HttpResponse
 {
-    std::string content;
-    HttpResponse& add(std::string key, std::string val);
+  private:
+    std::string http_version_ = "HTTP/1.1";
+    size_t status_code_ = 0;
+    std::string reason_phrase_ = "";
+    std::map<std::string, std::string> headers_;
+    std::string body_;
+
+  public:
+    HttpResponse& addHeader(std::string key, std::string val);
     HttpResponse& with_content(std::string content, std::string type = "text/plain;charset=utf-8");
     HttpResponse(size_t status, std::string httptype = "HTTP/1.1",
                  std::string servername = default_servername);
@@ -37,7 +44,7 @@ struct HttpResponse
     static LocalFiles& getFileCache();
     
     inline static std::string default_servername = "co_http";
-    inline static std::map<size_t, std::string> status_num_string = {{200, "OK"}};
+    inline static std::map<size_t, std::string> status_num_string = {{200, "OK"}, {404, "Not Found"}};
     operator std::string();
 };
 
@@ -49,7 +56,7 @@ class HttpServerUtil
 
   public:
     // HTTP解析状态枚举
-    enum ParseState
+    enum class ParseState
     {
         REQUEST_LINE,
         HEADERS,

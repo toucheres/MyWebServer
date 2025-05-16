@@ -5,7 +5,7 @@
 #include <string>
 class control : public co_async
 {
-    int eventGo()
+    EventStatus eventGo() // Changed return type
     {
         std::string in{async_in_out::getInstance().read_until()};
         if (in != "")
@@ -15,9 +15,9 @@ class control : public co_async
             async_in_out::getInstance().writeFile("\n");
             if (in == "quit\n")
             {
-                std::exit(0);
+                std::exit(0); // Exiting directly, so Stop might not be processed
             }
         }
-        return 0;
+        return EventStatus::Continue; // control task continues
     }
 };

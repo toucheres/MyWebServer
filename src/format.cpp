@@ -4,29 +4,29 @@
 #include <regex>
 #include <vector>
 
-Format::Format(std::string format, Type type) : format(std::move(format)), type(type)
+Format::Format(std::string format, Type type) : format_str(std::move(format)), type_(type)
 {
 }
 
 bool Format::match(const std::string& str) const
 {
-    switch (type)
+    switch (type_)
     {
     case Type::same:
-        return format == str;
+        return format_str == str;
     case Type::prefix:
-        return str.compare(0, format.size(), format) == 0;
+        return str.compare(0, format_str.size(), format_str) == 0;
     case Type::suffix:
     {
-        if (str.size() < format.size())
+        if (str.size() < format_str.size())
             return false;
-        return str.compare(str.size() - format.size(), format.size(), format) == 0;
+        return str.compare(str.size() - format_str.size(), format_str.size(), format_str) == 0;
     }
     case Type::regex:
     {
         try
         {
-            std::regex pattern(format);
+            std::regex pattern(format_str);
             return std::regex_match(str, pattern);
         }
         catch (const std::regex_error&)
@@ -38,9 +38,9 @@ bool Format::match(const std::string& str) const
     {
         // 分析格式字符串，找出所有格式说明符
         int formatCount = 0;
-        for (size_t i = 0; i < format.size(); ++i)
+        for (size_t i = 0; i < format_str.size(); ++i)
         {
-            if (format[i] == '%' && i + 1 < format.size() && format[i + 1] != '%')
+            if (format_str[i] == '%' && i + 1 < format_str.size() && format_str[i + 1] != '%')
             {
                 formatCount++;
             }
@@ -58,7 +58,7 @@ bool Format::match(const std::string& str) const
         int matches = 0;
         if (!buffers.empty())
         {
-            matches = sscanf(str.c_str(), format.c_str(), buffers[0],
+            matches = sscanf(str.c_str(), format_str.c_str(), buffers[0],
                              buffers.size() > 1 ? buffers[1] : nullptr,
                              buffers.size() > 2 ? buffers[2] : nullptr,
                              buffers.size() > 3 ? buffers[3] : nullptr,
@@ -97,22 +97,22 @@ bool Format::operator==(const std::string& str) const
 bool Format::operator==(const Format& in) const
 {
     // 两个Format对象只有在类型相同且格式字符串相同时才相等
-    return type == in.type && format == in.format;
+    return type_ == in.type_ && format_str == in.format_str;
 }
 
 bool Format::operator<(const Format& in) const
 {
     // 先比较类型，再比较格式字符串
-    if (type != in.type)
+    if (type_ != in.type_)
     {
-        return static_cast<int>(type) < static_cast<int>(in.type);
+        return static_cast<int>(type_) < static_cast<int>(in.type_);
     }
-    return format < in.format;
+    return format_str < in.format_str;
 }
 
 std::optional<Format::ParseResult> Format::parse(const std::string& str) const
 {
-    switch (type)
+    switch (type_)
     {
     case Type::regex:
         return parseRegex(str);
@@ -132,21 +132,21 @@ std::optional<Format::ParseResult> Format::parseScanf(const std::string& str) co
 {
     // 首先分析格式字符串，找出所有的格式说明符
     std::vector<char> formatTypes;
-    for (size_t i = 0; i < format.size(); ++i)
+    for (size_t i = 0; i < format_str.size(); ++i)
     {
-        if (format[i] == '%')
+        if (format_str[i] == '%')
         {
-            if (i + 1 < format.size() && format[i + 1] != '%')
+            if (i + 1 < format_str.size() && format_str[i + 1] != '%')
             {
                 // 找到格式说明符的类型字符
                 size_t j = i + 1;
-                while (j < format.size() && !std::isalpha(format[j]))
+                while (j < format_str.size() && !std::isalpha(format_str[j]))
                 {
                     ++j;
                 }
-                if (j < format.size())
+                if (j < format_str.size())
                 {
-                    formatTypes.push_back(format[j]);
+                    formatTypes.push_back(format_str[j]);
                 }
             }
         }
@@ -189,7 +189,7 @@ std::optional<Format::ParseResult> Format::parseScanf(const std::string& str) co
     if (!buffers.empty())
     {
         std::vector<void*> scanfArgs = buffers;
-        matches = sscanf(str.c_str(), format.c_str(), scanfArgs[0],
+        matches = sscanf(str.c_str(), format_str.c_str(), scanfArgs[0],
                          scanfArgs.size() > 1 ? scanfArgs[1] : nullptr,
                          scanfArgs.size() > 2 ? scanfArgs[2] : nullptr,
                          scanfArgs.size() > 3 ? scanfArgs[3] : nullptr,
@@ -263,7 +263,7 @@ std::optional<Format::ParseResult> Format::parseRegex(const std::string& str) co
 {
     try
     {
-        std::regex re(format);
+        std::regex re(format_str);
         std::smatch matches;
 
         if (std::regex_search(str, matches, re))

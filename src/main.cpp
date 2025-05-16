@@ -17,9 +17,11 @@
 
 int main()
 {
+    platform::SocketLibManager lib_manager_guard; // Ensure socket library is initialized/cleaned up
+
     LocalFiles static_files;
     control con;
-    auto& coManager = Co_Start_Manager::getInstance();
+    auto& coManagerInstance = Co_Start_Manager::getInstance(); // Renamed for clarity
     auto httpServer = HttpServer{};
     // httpServer.addCallbackFormat(
     //     Format{"/", Format::Type::same},
@@ -40,7 +42,7 @@ int main()
     //                 // 发送握手响应
     //                 socketfile.write(response);
     //                 // 升级协议 - 不再创建新对象，而是修改当前对象的协议类型
-    //                 socketfile.upgradeProtocol(Agreement::WebSocket);
+    //                 socketfile.upgradeProtocol(Protocol::WebSocket); // Use enum
     //                 socketfile.getContent()["path"] = "/ws";
     //             }
     //             else
@@ -53,10 +55,10 @@ int main()
     //             }
     //             return;
     //         }
-    //         else if (socketfile.getAgreementType() == Agreement::WebSocket)
+    //         else if (socketfile.getAgreementType() == Protocol::WebSocket) // Use enum
     //         {
     //             auto res = std::move(WebSocketUtil::makeWebSocketFrame(
-    //                 true, WebSocketUtil::TEXT,
+    //                 true, WebSocketUtil::WebSocketOpcode::TEXT, // Use enum
     //                 "socket readed!:" + socketfile.getContent().at("path")));
     //             std::cout << "callbacked!" << '\n';
     //             socketfile.write(res);
@@ -83,15 +85,15 @@ int main()
     //             (content.find("message") != content.end() ? content["message"] : "no message");
 
     //         // 使用原生write替代write_str_with_agreement
-    //         if (socketfile.getAgreementType() == Agreement::HTTP)
+    //         if (socketfile.getAgreementType() == Protocol::HTTP) // Use enum
     //         {
     //             std::string header = HttpServerUtil::makeHttpHead(200, replyText); //
     //             使用HttpServerUtil中的函数 socketfile.write(header); socketfile.write(replyText);
     //         }
-    //         else if (socketfile.getAgreementType() == Agreement::WebSocket)
+    //         else if (socketfile.getAgreementType() == Protocol::WebSocket) // Use enum
     //         {
     //             std::string frame =
-    //                 WebSocketUtil::makeWebSocketFrame(true, WebSocketUtil::TEXT, replyText);
+    //                 WebSocketUtil::makeWebSocketFrame(true, WebSocketUtil::WebSocketOpcode::TEXT, replyText); // Use enum
     //             socketfile.write(frame);
     //         }
     //     });
@@ -100,7 +102,7 @@ int main()
                                  {
                                      std::string path = &self.getContent()["path"][1];
                                      auto file = HttpResponse::formLocalFile(path);
-                                     self.write(file);
+                                     self.write(std::string(file)); // Explicit cast to string
                                  });
 
     httpServer.addCallbackFormat(Format{"/nonexistent.html", Format::Type::same},
@@ -108,22 +110,22 @@ int main()
                                  {
                                      std::string path = "404.html";
                                      auto file = HttpResponse::formLocalFile(path);
-                                     self.write(file);
+                                     self.write(std::string(file)); // Explicit cast
                                  });
     httpServer.addCallbackFormat(Format{"/", Format::Type::same},
                                  [](serverFile& self)
                                  {
                                      std::string path = "index.html";
                                      auto file = HttpResponse::formLocalFile(path);
-                                     self.write(file);
+                                     self.write(std::string(file)); // Explicit cast
                                  });
 
-    coManager.manager.add(httpServer);
-    coManager.manager.add(con);
-    coManager.loopTime = std::chrono::nanoseconds(0);
+    coManagerInstance.getManager().add(httpServer); // Use getter for manager
+    coManagerInstance.getManager().add(con); // Use getter for manager
+    coManagerInstance.setLoopInterval(std::chrono::nanoseconds(0)); // Use setLoopInterval
 
     // 启动服务器
-    coManager.start();
+    coManagerInstance.start();
 
     return 0;
 }

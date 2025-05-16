@@ -12,7 +12,7 @@ private:
 
 public:
     // WebSocket操作码枚举
-    enum WebSocketOpcode
+    enum class WebSocketOpcode // Changed to enum class
     {
         CONTINUATION = 0x0,
         TEXT = 0x1,
@@ -23,7 +23,7 @@ public:
     };
 
     // WebSocket帧操作的静态方法
-    static std::string makeWebSocketFrame(bool fin, uint8_t opcode, const std::string& payload,
+    static std::string makeWebSocketFrame(bool fin, WebSocketOpcode opcode, const std::string& payload, // Use enum class
                                          bool masked = false);
     static std::string parseWebSocketFrame(const std::string& frame);
     
@@ -49,14 +49,15 @@ public:
 // WebSocketResponse类 - 简化WebSocket响应创建
 class WebSocketResponse
 {
-public:
-    std::string content;
-    uint8_t opcode;
-    bool fin;
-    bool masked;
+private:
+    std::string content_;
+    WebSocketUtil::WebSocketOpcode opcode_;
+    bool fin_;
+    bool masked_;
 
+public:
     // 构造函数
-    WebSocketResponse(uint8_t opcode = WebSocketUtil::TEXT, bool fin = true, bool masked = false);
+    WebSocketResponse(WebSocketUtil::WebSocketOpcode opcode = WebSocketUtil::WebSocketOpcode::TEXT, bool fin = true, bool masked = false); // Use enum class
     
     // 设置内容
     WebSocketResponse& with_content(const std::string& content);
