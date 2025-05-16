@@ -1,5 +1,6 @@
 #include "webSocketFile.h"
 #include "serverFile.h"
+#include "protocol_constants.h" // 新增包含
 #include <algorithm>
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
@@ -13,7 +14,7 @@ bool WebSocketUtil::autoRegistered = WebSocketUtil::initialize();
 // 初始化方法，注册WebSocket协议处理函数
 bool WebSocketUtil::initialize()
 {
-    return serverFile::registerProtocolHandler(Protocol::WebSocket, WebSocketUtil::wsEventloop);
+    return serverFile::registerProtocolHandler(Protocol::WebSocket, WebSocketUtil::wsEventloop); // 使用 Protocol 枚举
 }
 
 // WebSocket帧操作

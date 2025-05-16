@@ -1,5 +1,6 @@
 #include "serverFile.h"
 #include "httpServerFile.h"
+#include "protocol_constants.h" // 新增包含
 #include <algorithm>
 #include <string>
 #include <filesystem>
@@ -11,7 +12,7 @@ bool HttpServerUtil::autoRegistered = HttpServerUtil::initialize();
 
 // 初始化方法，注册HTTP协议处理函数
 bool HttpServerUtil::initialize() {
-    return serverFile::registerProtocolHandler(Protocol::HTTP, HttpServerUtil::httpEventloop);
+    return serverFile::registerProtocolHandler(Protocol::HTTP, HttpServerUtil::httpEventloop); // 使用 Protocol 枚举
 }
 
 // HTTP协议的事件循环 - 静态方法

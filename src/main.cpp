@@ -2,6 +2,7 @@
 #include "format.h"
 #include "httpServerFile.h" // 确保包含HttpServerUtil的头文件 and Protocol::HTTP
 #include "serverFile.h"
+#include "protocol_constants.h" // 新增包含
 #include <chrono>
 #include <corutine.hpp>
 #include <file.h>
@@ -24,7 +25,7 @@ int main()
         Format{"/", Format::Type::same},
         [](serverFile& socketfile)
         {
-            if (socketfile.getAgreementType() == Protocol::HTTP) // Use Protocol::HTTP
+            if (socketfile.getAgreementType() == Protocol::HTTP) // 使用 Protocol 枚举
             {
                 if (WebSocketUtil::shouldbeUpdataToWS(socketfile))
                 {
@@ -32,7 +33,7 @@ int main()
                     // 发送握手响应
                     socketfile.write(response);
                     // 升级协议 - 不再创建新对象，而是修改当前对象的协议类型
-                    socketfile.upgradeProtocol(Protocol::WebSocket); // Use Protocol::WebSocket
+                    socketfile.upgradeProtocol(Protocol::WebSocket); // 使用 Protocol 枚举
                     socketfile.getContent()["path"] = "/ws";
                 }
                 else
@@ -45,7 +46,7 @@ int main()
                 }
                 return;
             }
-            else if (socketfile.getAgreementType() == Protocol::WebSocket) // Use Protocol::WebSocket
+            else if (socketfile.getAgreementType() == Protocol::WebSocket) // 使用 Protocol 枚举
             {
                 auto res = std::move(WebSocketUtil::makeWebSocketFrame(
                     "socket readed!:" + socketfile.getContent().at("path")));
@@ -74,13 +75,13 @@ int main()
                 (content.find("message") != content.end() ? content["message"] : "no message");
 
             // 使用原生write替代write_str_with_agreement
-            if (socketfile.getAgreementType() == Protocol::HTTP) // Use Protocol::HTTP
+            if (socketfile.getAgreementType() == Protocol::HTTP) // 使用 Protocol 枚举
             {
                 std::string header = HttpServerUtil::makeHttpHead(200, replyText); //
                 // 使用HttpServerUtil中的函数 socketfile.write(header);
                 socketfile.write(replyText);
             }
-            else if (socketfile.getAgreementType() == Protocol::WebSocket) // Use Protocol::WebSocket
+            else if (socketfile.getAgreementType() == Protocol::WebSocket) // 使用 Protocol 枚举
             {
                 std::string frame = WebSocketUtil::makeWebSocketFrame(replyText); // Use enum
                 socketfile.write(frame);

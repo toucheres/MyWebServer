@@ -1,12 +1,12 @@
 #include "http.h"
 #include "file.h"
 #include "platform.h"
+#include "protocol_constants.h" // 新增包含
 #include <filesystem>
-#include <httpServerFile.h> // For Protocol::HTTP
 #include <iostream>
 #include <memory>
 #include <string_view>
-// #include <unistd.h>
+#include <httpServerFile.h>
 
 EventStatus HttpServer::eventGo()
 {
@@ -49,7 +49,7 @@ bool HttpServer::add(int fd)
     else
     {
         // 初始化HTTP协议
-        it->second->upgradeProtocol(Protocol::HTTP); // Use Protocol::HTTP constant
+        it->second->upgradeProtocol(Protocol::HTTP); // 使用 Protocol 枚举
         it->second->resetCorutine();
 
         it->second->setCallback(

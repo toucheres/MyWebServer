@@ -1,12 +1,10 @@
 #pragma once
 #include "serverFile.h"
+#include "protocol_constants.h" // 新增包含
 #include <string>
 #include <string_view>
 #include "file.h" // 确保包含LocalFiles的定义
-namespace Protocol
-{
-    constexpr int HTTP = 0;
-};
+
 struct HttpResponse
 {
   private:
