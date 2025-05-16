@@ -244,19 +244,28 @@ HttpResponse& HttpResponse::with_content(std::string new_content, std::string ty
     return *this;
 }
 
+// 实现获取文件缓存的方法
+LocalFiles& HttpResponse::getFileCache() {
+    static LocalFiles fileCache;
+    return fileCache;
+}
+
 HttpResponse HttpResponse::formLocalFile(std::string path, std::string type)
 {
-    // 从本地文件创建响应
-    std::ifstream file(path, std::ios::binary);
-    HttpResponse response(file ? 200 : 404);
+    // 使用文件缓存获取文件内容
+    auto& fileCache = getFileCache();
+    LocalFile& file = fileCache.get(path);
+    std::string_view content = file.read();
     
-    if (file) {
-        // 读取文件内容
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        response.with_content(buffer.str(), type);
+    HttpResponse response{200};
+    
+    if (!content.empty()) {
+        // 文件存在且有内容
+        response = HttpResponse(200);
+        response.with_content(std::string(content), type);
     } else {
-        // 文件不存在，返回404响应
+        // 文件不存在或为空
+        response = HttpResponse(404);
         response.with_content("File not found: " + path, "text/plain");
     }
     

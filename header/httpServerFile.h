@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include "file.h" // 确保包含LocalFiles的定义
 
 // HTTP服务器工具类 - 类似WebSocketUtil
 // std::string response = "";
@@ -31,6 +32,10 @@ struct HttpResponse
                  std::string servername = default_servername);
     static HttpResponse formLocalFile(std::string path, std::string type);
     static HttpResponse formLocalFile(std::string path); // auto select type
+    
+    // 添加静态文件缓存
+    static LocalFiles& getFileCache();
+    
     inline static std::string default_servername = "co_http";
     inline static std::map<size_t, std::string> status_num_string = {{200, "OK"}};
     operator std::string();
