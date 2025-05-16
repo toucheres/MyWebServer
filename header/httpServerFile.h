@@ -3,25 +3,10 @@
 #include <string>
 #include <string_view>
 #include "file.h" // 确保包含LocalFiles的定义
-
-// HTTP服务器工具类 - 类似WebSocketUtil
-// std::string response = "";
-// response.append("HTTP/1.1 ");
-// response.append(std::to_string(status));
-// if (status == 200)
-//     response.append(" OK");
-// else if (status == 404)
-//     response.append(" Not Found");
-// response.append("\r\n");
-// response.append("Server: co_Http\r\n");
-// response.append("Content-Type: ");
-// response.append(std::string(content_type));
-// response.append("\r\n");
-// response.append("Connection: keep-alive\r\n");
-// response.append("Content-Length: ");
-// response.append(std::to_string(content.length()));
-// response.append("\r\n\r\n");
-// return response;
+namespace Protocol
+{
+    constexpr int HTTP = 0;
+};
 struct HttpResponse
 {
   private:

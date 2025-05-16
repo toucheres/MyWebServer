@@ -1,17 +1,17 @@
 #include "serverFile.h"
 
 // serverFile constructor
-serverFile::serverFile(int fd) : socketfile_(fd), protocolType_(Protocol::HTTP), fileState_(true) {}
+serverFile::serverFile(int fd) : socketfile_(fd), protocolType_(0), fileState_(true) {} // protocolType_ initialized to 0 (HTTP)
 
 // 使用Meyer's Singleton模式实现懒加载
-std::unordered_map<Protocol, serverFile::ProtocolHandler>& 
+std::unordered_map<int, serverFile::ProtocolHandler>& 
 serverFile::getProtocolHandlers() {
-    static std::unordered_map<Protocol, ProtocolHandler> protocolHandlers;
+    static std::unordered_map<int, ProtocolHandler> protocolHandlers; // Key type changed to int
     return protocolHandlers;
 }
 
 // 注册协议处理函数的实现
-bool serverFile::registerProtocolHandler(Protocol protocolType, ProtocolHandler handler) {
+bool serverFile::registerProtocolHandler(int protocolType, ProtocolHandler handler) { // Parameter type changed to int
     // 注册或更新处理函数
     getProtocolHandlers()[protocolType] = std::move(handler);
     return true;
@@ -31,7 +31,7 @@ bool serverFile::resetCorutine() {
     return false;
 }
 
-Protocol serverFile::getAgreementType() const { return protocolType_; }
+int serverFile::getAgreementType() const { return protocolType_; } // Return type changed to int
 
 std::map<std::string, std::string>& serverFile::getContent() { return content_; }
 
@@ -52,7 +52,7 @@ int serverFile::handle() {
 
 void serverFile::closeIt() { socketfile_.closeIt(); }
 
-bool serverFile::upgradeProtocol(Protocol newProtocol) {
+bool serverFile::upgradeProtocol(int newProtocol) { // Parameter type changed to int
     if (newProtocol == protocolType_) return true;
     protocolType_ = newProtocol;
     return resetCorutine();

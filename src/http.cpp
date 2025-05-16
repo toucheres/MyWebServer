@@ -2,17 +2,18 @@
 #include "file.h"
 #include "platform.h"
 #include <filesystem>
+#include <httpServerFile.h> // For Protocol::HTTP
 #include <iostream>
 #include <memory>
 #include <string_view>
-#include <httpServerFile.h>
 // #include <unistd.h>
 
 EventStatus HttpServer::eventGo()
 {
-    if (server_task_handle) server_task_handle.resume(); // Use renamed handle
-    processFiles(); // 添加对文件的处理
-    return EventStatus::Continue; // HttpServer typically runs indefinitely
+    if (server_task_handle)
+        server_task_handle.resume(); // Use renamed handle
+    processFiles();                  // 添加对文件的处理
+    return EventStatus::Continue;    // HttpServer typically runs indefinitely
 }
 
 // 新增：从HttpFiles移动的fileMap处理功能
@@ -48,7 +49,7 @@ bool HttpServer::add(int fd)
     else
     {
         // 初始化HTTP协议
-        it->second->upgradeProtocol(Protocol::HTTP); // Use upgradeProtocol for clarity
+        it->second->upgradeProtocol(Protocol::HTTP); // Use Protocol::HTTP constant
         it->second->resetCorutine();
 
         it->second->setCallback(
@@ -75,11 +76,12 @@ bool HttpServer::add(int fd)
 int HttpServer::makeSocket()
 {
     // 初始化socket库 - 平台无关调用
-    if (!platform::initSocketLib()) {
+    if (!platform::initSocketLib())
+    {
         std::cerr << "Failed to initialize socket library" << std::endl;
         return static_cast<int>(INVALID_SOCKET_VALUE);
     }
-    
+
     socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == INVALID_SOCKET_VALUE)
     {
@@ -95,7 +97,7 @@ int HttpServer::bindSocket(int server_fd)
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(port);
-    
+
     if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR_RETURN)
     {
         platform::printError("Bind failed");
@@ -141,11 +143,12 @@ int HttpServer::AcceptSocket(int server_fd, struct sockaddr* client_addr,
 
 // 修改构造函数，确保初始化顺序与声明顺序一致
 HttpServer::HttpServer(std::string ip_listening, uint16_t port)
-    : server_fd(-1), port(port), ip_listening(std::move(ip_listening)), 
-      running(false), server_task_handle(start()) // Initialize renamed handle
+    : server_fd(-1), port(port), ip_listening(std::move(ip_listening)), running(false),
+      server_task_handle(start()) // Initialize renamed handle
 {
     server_fd = makeSocket();
-    if (server_fd == static_cast<int>(INVALID_SOCKET_VALUE)) {
+    if (server_fd == static_cast<int>(INVALID_SOCKET_VALUE))
+    {
         return;
     }
     setReuseAddr(server_fd);
@@ -194,7 +197,7 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                 std::filesystem::relative(entry.path(), current_path);
             // 确保路径使用正斜杠（适用于URL）
             std::string url_path = "/" + platform::toUrlPath(relative_path.string());
-            
+
             addCallbackFormat(Format{url_path, Format::Type::same},
                               [&static_files](serverFile& file)
                               {

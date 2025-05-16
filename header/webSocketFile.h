@@ -3,6 +3,11 @@
 #include "serverFile.h"
 #include <string>
 
+// Declare Protocol namespace and WebSocket constant
+namespace Protocol {
+    constexpr int WebSocket = 1;
+}
+
 // WebSocket工具类 - 只包含静态方法和常量
 class WebSocketUtil
 {
