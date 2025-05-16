@@ -4,11 +4,14 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <unordered_map>
+
 namespace Agreement
 {
     constexpr int HTTP = 0;
     constexpr int WebSocket = 1;
 }
+
 class serverFile : public co_async
 {
   public:
@@ -18,6 +21,15 @@ class serverFile : public co_async
     Task<void, void> corutine;
     std::function<void(serverFile&)> callback;
     int fileState = true;
+    
+    // 定义协议处理函数类型
+    using ProtocolHandler = std::function<Task<void, void>(serverFile*)>;
+    
+    // 存储协议类型到处理函数的静态映射
+    static std::unordered_map<int, ProtocolHandler> protocolHandlers;
+    
+    // 注册协议处理函数
+    static bool registerProtocolHandler(int protocolType, ProtocolHandler handler);
     
   public:
     serverFile() = default;

@@ -1,18 +1,15 @@
 #pragma once
 #include "corutine.hpp"
 #include "serverFile.h"
+#include "httpServerFile.h" // 添加包含HttpServerUtil的头文件
 #include <cstring>
 #include <file.h>
 #include <format.h>
 #include <forward_list>
 #include <functional>
 #include <platform.h>
-//#include <netinet/in.h>
 #include <string>
-//#include <sys/fcntl.h>
-//#include <sys/socket.h>
 #include <sys/types.h>
-// #include <unistd.h>
 #include <unordered_map>
 
 class HttpServer : public co_async
@@ -31,7 +28,7 @@ class HttpServer : public co_async
     bool setReuseAddr(int& fd);
     Task<void, void> start();
     Task<void, void> handle = start();
-    std::string processRequest(const std::string& request);
+    //std::string processRequest(const std::string& request);
     std::forward_list<std::pair<Format, std::function<void(serverFile&)>>> callbacks_format;
 
   public:
@@ -42,11 +39,7 @@ class HttpServer : public co_async
     bool stop();
     void addCallbackFormat(Format format, std::function<void(serverFile&)> callback);
     int removeCallbackFormat(const Format& format);
-    static std::string makeHttpHead(int status, std::string_view content,
-                                    std::string_view content_type = "text/plain;charset=utf-8");
-    static std::string judge_file_type(std::string_view path);
-    void handleClient(int client_fd);
-
+    
     // 从HttpFiles移动过来的方法
     bool add(int fd);
     int processFiles(); // 替代原HttpFiles的eventGo

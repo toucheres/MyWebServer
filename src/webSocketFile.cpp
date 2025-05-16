@@ -8,8 +8,16 @@
 #include <iostream>
 #include <string>
 
+// 初始化静态成员，自动注册WebSocket协议处理函数
+bool WebSocketUtil::autoRegistered = WebSocketUtil::initialize();
+
+// 初始化方法，注册WebSocket协议处理函数
+bool WebSocketUtil::initialize() {
+    return serverFile::registerProtocolHandler(Agreement::WebSocket, WebSocketUtil::wsEventloop);
+}
+
 // WebSocket帧操作
-std::string WebSocketUtil::createWebSocketFrame(bool fin, uint8_t opcode, const std::string& payload, bool masked)
+std::string WebSocketUtil::makeWebSocketFrame(bool fin, uint8_t opcode, const std::string& payload, bool masked)
 {
     std::string frame;
     
@@ -146,7 +154,7 @@ std::string base64_encode(const unsigned char* input, size_t length) {
 }
 
 // WebSocket握手响应
-std::string WebSocketUtil::createWebSocketHandshake(const std::string& clientKey) {
+std::string WebSocketUtil::makeWebSocketHandshake(const std::string& clientKey) {
     // 按照WebSocket规范，将客户端键与WebSocket GUID连接
     const char* guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     std::string concat = clientKey + guid;
@@ -230,4 +238,55 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self) {
         co_yield {};
     }
     co_return;
+}
+
+// WebSocketResponse实现
+WebSocketResponse::WebSocketResponse(uint8_t opcode, bool fin, bool masked)
+    : opcode(opcode), fin(fin), masked(masked)
+{
+}
+
+WebSocketResponse& WebSocketResponse::with_content(const std::string& new_content)
+{
+    content = new_content;
+    return *this;
+}
+
+WebSocketResponse WebSocketResponse::text(const std::string& content)
+{
+    return WebSocketResponse(WebSocketUtil::TEXT).with_content(content);
+}
+
+WebSocketResponse WebSocketResponse::binary(const std::string& content)
+{
+    return WebSocketResponse(WebSocketUtil::BINARY).with_content(content);
+}
+
+WebSocketResponse WebSocketResponse::ping(const std::string& content)
+{
+    return WebSocketResponse(WebSocketUtil::PING).with_content(content);
+}
+
+WebSocketResponse WebSocketResponse::pong(const std::string& content)
+{
+    return WebSocketResponse(WebSocketUtil::PONG).with_content(content);
+}
+
+WebSocketResponse WebSocketResponse::close(uint16_t code, const std::string& reason)
+{
+    std::string payload;
+    if (code > 0) {
+        // 添加关闭代码（网络字节序）
+        payload.push_back(static_cast<char>((code >> 8) & 0xFF));
+        payload.push_back(static_cast<char>(code & 0xFF));
+        // 添加关闭原因
+        payload.append(reason);
+    }
+    return WebSocketResponse(WebSocketUtil::CLOSE).with_content(payload);
+}
+
+WebSocketResponse::operator std::string() const
+{
+    // 利用WebSocketUtil的createWebSocketFrame方法
+    return WebSocketUtil::makeWebSocketFrame(fin, opcode, content, masked);
 }

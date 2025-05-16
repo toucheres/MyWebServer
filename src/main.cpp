@@ -1,6 +1,7 @@
 #include "main.hpp"
 #include "platform.h"
 #include "serverFile.h"
+#include "httpServerFile.h" // 确保包含HttpServerUtil的头文件
 #include <chrono>
 #include <corutine.hpp>
 #include <file.h>
@@ -15,57 +16,12 @@
 
 int main()
 {
+    // 无需手动初始化 - 已通过静态成员自动注册
+
     LocalFiles static_files;
     control con;
     auto& coManager = Co_Start_Manager::getInstance();
     auto httpServer = HttpServer{};
-    // httpServer.addCallbackFormat(
-    //     Format{"/%s", Format::Type::scanf},
-    //     [&static_files](serverFile& file)
-    //     {
-    //         auto parseResult =
-    //             Format{"/%s", Format::Type::scanf}.parse(file.getContent().at("path"));
-    //         std::string path = "404.html"; // Default path if (parseResult &&
-    //         if (!parseResult->empty() && std::holds_alternative<std::string>((*parseResult)[0]))
-    //         {
-    //             path = std::get<std::string>((*parseResult)[0]);
-    //         }
-    //         auto& Localfile = static_files.get(path);
-    //         std::string_view content = Localfile.read();
-    //         if (content != "")
-    //         {
-    //             std::string head =
-    //                 HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
-    //             file.write(std::move(head));
-    //             file.write(std::move(std::string(content)));
-    //         }
-    //         else
-    //         {
-    //             content = static_files.get("404.html").read();
-    //             std::string head =
-    //                 HttpServer::makeHttpHead(200, content, HttpServer::judge_file_type(path));
-    //             // std::cout << head << '\n';
-    //             file.write(std::move(head));
-    //             file.write(std::move(std::string(content)));
-    //         }
-    //     });
-    // httpServer.addCallbackFormat(Format{"/", Format::Type::same},
-    //                              [&static_files](serverFile& file)
-    //                              {
-    //                                  auto& Localfile = static_files.get("index.html");
-    //                                  std::string_view content = Localfile.read();
-    //                                  if (content != "")
-    //                                  {
-    //                                      // std::cout << content.size() << '\n';
-    //                                      std::string head = HttpServer::makeHttpHead(
-    //                                          200, content,
-    //                                          HttpServer::judge_file_type("index.html"));
-    //                                      // std::cout << head;
-    //                                      // std::cout << head << '\n';
-    //                                      file.write(std::move(head));
-    //                                      file.write(std::move(std::string(content)));
-    //                                  }
-    //                              });
     httpServer.addCallbackFormat(
         Format{"/", Format::Type::same},
         [](serverFile& socketfile)
@@ -81,7 +37,7 @@ int main()
                     // 获取客户端发送的key
                     std::string clientKey = key_it->second;
                     // 使用WebSocketUtil的方法生成握手响应
-                    std::string response = WebSocketUtil::createWebSocketHandshake(clientKey);
+                    std::string response = WebSocketUtil::makeWebSocketHandshake(clientKey);
                     // 发送握手响应
                     socketfile.write(response);
                     // 升级协议 - 不再创建新对象，而是修改当前对象的协议类型
@@ -92,7 +48,7 @@ int main()
                 {
                     // 使用原生write替代write_str_with_agreement
                     std::string message = "http not updata to websocket\r\n";
-                    std::string header = HttpServer::makeHttpHead(200, message);
+                    std::string header = HttpServerUtil::makeHttpHead(200, message); // 使用HttpServerUtil中的函数
                     socketfile.write(header);
                     socketfile.write(message);
                 }
@@ -100,7 +56,7 @@ int main()
             }
             else if (socketfile.getAgreementType() == Agreement::WebSocket)
             {
-                auto res = std::move(WebSocketUtil::createWebSocketFrame(
+                auto res = std::move(WebSocketUtil::makeWebSocketFrame(
                     true, WebSocketUtil::TEXT,
                     "socket readed!:" + socketfile.getContent().at("path")));
                 std::cout << "callbacked!" << '\n';
@@ -130,14 +86,14 @@ int main()
             // 使用原生write替代write_str_with_agreement
             if (socketfile.getAgreementType() == Agreement::HTTP)
             {
-                std::string header = HttpServer::makeHttpHead(200, replyText);
+                std::string header = HttpServerUtil::makeHttpHead(200, replyText); // 使用HttpServerUtil中的函数
                 socketfile.write(header);
                 socketfile.write(replyText);
             }
             else if (socketfile.getAgreementType() == Agreement::WebSocket)
             {
                 std::string frame =
-                    WebSocketUtil::createWebSocketFrame(true, WebSocketUtil::TEXT, replyText);
+                    WebSocketUtil::makeWebSocketFrame(true, WebSocketUtil::TEXT, replyText);
                 socketfile.write(frame);
             }
         });

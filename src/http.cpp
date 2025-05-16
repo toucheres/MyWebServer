@@ -211,8 +211,8 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                                   std::string_view content = Localfile.read();
                                   if (content != "")
                                   {
-                                      std::string head = HttpServer::makeHttpHead(
-                                          200, content, HttpServer::judge_file_type(path));
+                                      std::string head = HttpServerUtil::makeHttpHead(
+                                          200, content, HttpServerUtil::judge_file_type(path));
                                       file.write(std::move(head));
                                       file.write(std::string(content)); // 移除不必要的std::move
                                   }
@@ -273,58 +273,13 @@ int HttpServer::removeCallbackFormat(const Format& format)
     return removed_count;
 }
 
-std::string HttpServer::makeHttpHead(int status, std::string_view content,
-                                     std::string_view content_type)
-{
-    std::string response = "";
-    response.append("HTTP/1.1 ");
-    response.append(std::to_string(status));
-    if (status == 200)
-        response.append(" OK");
-    else if (status == 404)
-        response.append(" Not Found");
-    response.append("\r\n");
-    response.append("Server: testHttp\r\n");
-    response.append("Content-Type: ");
-    response.append(std::string(content_type));
-    response.append("\r\n");
-    response.append("Connection: keep-alive\r\n");
-    response.append("Content-Length: ");
-    response.append(std::to_string(content.length()));
-    response.append("\r\n\r\n");
-    return response;
-}
-
-std::string HttpServer::judge_file_type(std::string_view path)
-{
-    static const std::unordered_map<std::string, std::string> mime_types = {
-        {".html", "text/html"},        {".htm", "text/html"},
-        {".css", "text/css"},          {".js", "application/javascript"},
-        {".json", "application/json"}, {".png", "image/png"},
-        {".jpg", "image/jpeg"},        {".jpeg", "image/jpeg"},
-        {".gif", "image/gif"},         {".svg", "image/svg+xml"},
-        {".txt", "text/plain"},        {".pdf", "application/pdf"},
-        {".zip", "application/zip"},   {".mp3", "audio/mpeg"},
-        {".mp4", "video/mp4"},
-        // 添加更多需要支持的类型
-    };
-    std::filesystem::path file_path(path);
-    std::string extension = file_path.extension().string();
-    auto it = mime_types.find(extension);
-    if (it != mime_types.end())
-    {
-        return it->second;
-    }
-    return "application/octet-stream"; // 默认 MIME 类型
-}
-
 // 添加未使用参数的标记
-std::string HttpServer::processRequest(const std::string& request [[maybe_unused]])
-{
-    return "";
-}
+// std::string HttpServer::processRequest(const std::string& request [[maybe_unused]])
+// {
+//     return "";
+// }
 
-void HttpServer::handleClient(int client_fd [[maybe_unused]])
-{
-    // 空实现
-}
+// void HttpServer::handleClient(int client_fd [[maybe_unused]])
+// {
+//     // 空实现
+// }

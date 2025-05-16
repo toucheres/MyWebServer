@@ -2,6 +2,18 @@
 #include "httpServerFile.h"
 #include <algorithm>
 #include <string>
+#include <filesystem>
+#include <unordered_map>
+#include <fstream>
+#include <sstream>
+
+// 初始化静态成员，自动注册HTTP协议处理函数
+bool HttpServerUtil::autoRegistered = HttpServerUtil::initialize();
+
+// 初始化方法，注册HTTP协议处理函数
+bool HttpServerUtil::initialize() {
+    return serverFile::registerProtocolHandler(Agreement::HTTP, HttpServerUtil::httpEventloop);
+}
 
 // HTTP协议的事件循环 - 静态方法
 Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
@@ -154,8 +166,132 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
         }
         break;
         }
-
         co_yield {};
     }
     co_return;
+}
+
+// 从HttpServer移动过来的HTTP协议相关函数
+std::string HttpServerUtil::makeHttpHead(int status, std::string_view content,
+                                      std::string_view content_type)
+{
+    std::string response = "";
+    response.append("HTTP/1.1 ");
+    response.append(std::to_string(status));
+    if (status == 200)
+        response.append(" OK");
+    else if (status == 404)
+        response.append(" Not Found");
+    response.append("\r\n");
+    response.append("Server: co_Http\r\n");
+    response.append("Content-Type: ");
+    response.append(std::string(content_type));
+    response.append("\r\n");
+    response.append("Connection: keep-alive\r\n");
+    response.append("Content-Length: ");
+    response.append(std::to_string(content.length()));
+    response.append("\r\n\r\n");
+    return response;
+}
+
+std::string HttpServerUtil::judge_file_type(std::string_view path)
+{
+    static const std::unordered_map<std::string, std::string> mime_types = {
+        {".html", "text/html"},        {".htm", "text/html"},
+        {".css", "text/css"},          {".js", "application/javascript"},
+        {".json", "application/json"}, {".png", "image/png"},
+        {".jpg", "image/jpeg"},        {".jpeg", "image/jpeg"},
+        {".gif", "image/gif"},         {".svg", "image/svg+xml"},
+        {".txt", "text/plain"},        {".pdf", "application/pdf"},
+        {".zip", "application/zip"},   {".mp3", "audio/mpeg"},
+        {".mp4", "video/mp4"},
+        // 添加更多需要支持的类型
+    };
+    std::filesystem::path file_path(path);
+    std::string extension = file_path.extension().string();
+    auto it = mime_types.find(extension);
+    if (it != mime_types.end())
+    {
+        return it->second;
+    }
+    return "application/octet-stream"; // 默认 MIME 类型
+}
+
+// HttpResponse实现
+HttpResponse::HttpResponse(size_t status, std::string httptype, std::string servername)
+{
+    // 初始化基本的HTTP头部
+    add("Status", std::to_string(status) + " " + 
+        (status_num_string.count(status) > 0 ? status_num_string[status] : ""));
+    add("Server", servername);
+    add("Connection", "keep-alive");
+}
+
+HttpResponse& HttpResponse::add(std::string key, std::string val)
+{
+    // 将键值对转换为HTTP头部格式并添加到内容中
+    content.append(key + ": " + val + "\r\n");
+    return *this;
+}
+
+HttpResponse& HttpResponse::with_content(std::string new_content, std::string type)
+{
+    // 添加Content-Type和Content-Length头部，然后添加正文
+    add("Content-Type", type);
+    add("Content-Length", std::to_string(new_content.length()));
+    content.append("\r\n"); // 头部与正文之间的空行
+    content.append(new_content);
+    return *this;
+}
+
+HttpResponse HttpResponse::formLocalFile(std::string path, std::string type)
+{
+    // 从本地文件创建响应
+    std::ifstream file(path, std::ios::binary);
+    HttpResponse response(file ? 200 : 404);
+    
+    if (file) {
+        // 读取文件内容
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        response.with_content(buffer.str(), type);
+    } else {
+        // 文件不存在，返回404响应
+        response.with_content("File not found: " + path, "text/plain");
+    }
+    
+    return response;
+}
+
+HttpResponse HttpResponse::formLocalFile(std::string path)
+{
+    // 自动选择MIME类型
+    return formLocalFile(path, HttpServerUtil::judge_file_type(path));
+}
+
+HttpResponse::operator std::string()
+{
+    // 构建完整的HTTP响应字符串
+    std::string full_response = "";
+    
+    // 提取状态行
+    size_t statusPos = content.find("Status: ");
+    if (statusPos != std::string::npos) {
+        size_t endPos = content.find("\r\n", statusPos);
+        if (endPos != std::string::npos) {
+            // 获取状态值
+            std::string statusValue = content.substr(statusPos + 8, endPos - (statusPos + 8));
+            
+            // 构建HTTP状态行
+            full_response = "HTTP/1.1 " + statusValue + "\r\n";
+            
+            // 移除Status行，因为它不是标准HTTP头
+            content.erase(statusPos, endPos - statusPos + 2);
+        }
+    }
+    
+    // 添加剩余的头部和内容
+    full_response.append(content);
+    
+    return full_response;
 }
