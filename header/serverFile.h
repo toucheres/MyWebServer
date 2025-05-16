@@ -25,8 +25,8 @@ class serverFile : public co_async
     // 定义协议处理函数类型
     using ProtocolHandler = std::function<Task<void, void>(serverFile*)>;
     
-    // 存储协议类型到处理函数的静态映射
-    static std::unordered_map<int, ProtocolHandler> protocolHandlers;
+    // 存储协议类型到处理函数的静态映射 - 使用懒加载方式
+    static std::unordered_map<int, ProtocolHandler>& getProtocolHandlers();
     
     // 注册协议处理函数
     static bool registerProtocolHandler(int protocolType, ProtocolHandler handler);
