@@ -5,6 +5,7 @@
 #include <iostream>
 #include <memory>
 #include <string_view>
+#include <httpServerFile.h>
 // #include <unistd.h>
 
 EventStatus HttpServer::eventGo()

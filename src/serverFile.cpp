@@ -1,6 +1,4 @@
 #include "serverFile.h"
-#include "httpServerFile.h"
-#include "webSocketFile.h"
 
 // serverFile constructor
 serverFile::serverFile(int fd) : socketfile_(fd), protocolType_(Protocol::HTTP), fileState_(true) {}

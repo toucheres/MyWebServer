@@ -1,7 +1,6 @@
 #include "webSocketFile.h"
 #include "serverFile.h"
 #include <algorithm>
-#include <iostream>
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
