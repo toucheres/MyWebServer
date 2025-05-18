@@ -40,4 +40,5 @@ class HttpServer : public co_async
     bool stop();
     void addCallbackFormat(Format format, std::function<void(serverFile&)> callback);
     int removeCallbackFormat(const Format& format);
+    const std::unordered_map<int, std::shared_ptr<serverFile>>& getfilemap();
 };

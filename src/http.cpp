@@ -3,10 +3,10 @@
 #include "platform.h"
 #include "protocol_constants.h" // 新增包含
 #include <filesystem>
+#include <httpServerFile.h>
 #include <iostream>
 #include <memory>
 #include <string_view>
-#include <httpServerFile.h>
 
 EventStatus HttpServer::eventGo()
 {
@@ -275,4 +275,9 @@ int HttpServer::removeCallbackFormat(const Format& format)
             return should_remove;
         });
     return removed_count;
+}
+
+const std::unordered_map<int, std::shared_ptr<serverFile>>& HttpServer::getfilemap()
+{
+    return fileMap;
 }

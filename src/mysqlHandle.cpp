@@ -26,7 +26,8 @@ bool MySQLHandle::connect(const std::string& host, const std::string& user,
 {
     if (connected)
     {
-        disconnect();
+        // disconnect();
+        return false;
     }
 
     if (!mysql_real_connect(conn, host.c_str(), user.c_str(), password.c_str(), dbname.c_str(),
