@@ -285,7 +285,6 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
             if (!message.empty())
             {
                 self->getContent()["message"] = message;
-
                 // 调用回调处理消息
                 self->handle();
             }

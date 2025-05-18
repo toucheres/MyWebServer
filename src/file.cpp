@@ -261,6 +261,11 @@ const std::string_view SocketFile::read_all() const
     return std::string_view(handle_.get_context()->content.data(), handle_.get_context()->r_right);
 }
 
+int SocketFile::getfd()
+{
+    return handle_.get_context()->getfd();
+}
+
 const std::string_view SocketFile::read_until(const std::string_view delimiter) const
 {
     if (!handle_.get_context()) return "";

@@ -1,13 +1,15 @@
 #include "main.hpp"
 #include "format.h"
-#include "httpServerFile.h" // 确保包含HttpServerUtil的头文件 and Protocol::HTTP
-#include "serverFile.h"
+#include "httpServerFile.h"     // 确保包含HttpServerUtil的头文件 and Protocol::HTTP
 #include "protocol_constants.h" // 新增包含
+#include "serverFile.h"
 #include <chrono>
 #include <corutine.hpp>
 #include <file.h>
 #include <http.h>
 #include <iostream>
+#include <mysqlHandle.h> // 添加MySQL处理类的头文件
+#include <mysqlHandle.h>
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
@@ -15,100 +17,102 @@
 #include <string>
 #include <webSocketFile.h> // For Protocol::WebSocket
 
+struct Message
+{
+    std::string sender = "";
+    std::string content = "";
+    // 2025-05-17 14:23:55
+    std::string time = "1970-01-01 00:00::00";
+    Message(std::string asformat)
+    {
+        //...
+    }
+    Message(std::vector<std::string> asformat)
+    {
+        //...
+    }
+    operator std::string()
+    {
+        return "sender: " + sender + '\n' + "content: " + content + '\n' + "time: " + time + '\n' +
+               '\n';
+    }
+};
+// std::map<int, serverFile*> wsconnecting;
+auto httpServer = HttpServer{};
+auto mysqldb = MySQLHandle{"localhost", "webserver", "WebServer@2025", "chat_db", 3306};
 int main()
 {
     LocalFiles static_files;
     control con;
     auto& coManagerInstance = Co_Start_Manager::getInstance(); // Renamed for clarity
-    auto httpServer = HttpServer{};
+
     httpServer.addCallbackFormat(
         Format{"/", Format::Type::same},
         [](serverFile& socketfile)
         {
             if (socketfile.getAgreementType() == Protocol::HTTP) // 使用 Protocol 枚举
             {
-                if (WebSocketUtil::shouldbeUpdataToWS(socketfile))
-                {
-                    std::string response = WebSocketUtil::makeWebSocketHandshake(socketfile);
-                    // 发送握手响应
-                    socketfile.write(response);
-                    // 升级协议 - 不再创建新对象，而是修改当前对象的协议类型
-                    socketfile.upgradeProtocol(Protocol::WebSocket); // 使用 Protocol 枚举
-                    socketfile.getContent()["path"] = "/ws";
-                }
-                else
-                {
-                    // 使用原生write替代write_str_with_agreement
-                    std::string message = "http not updata to websocket\r\n";
-                    std::string header = HttpServerUtil::makeHttpHead(200, message); //
-                    // 使用HttpServerUtil中的函数 socketfile.write(header);
-                    socketfile.write(message);
-                }
-                return;
-            }
-            else if (socketfile.getAgreementType() == Protocol::WebSocket) // 使用 Protocol 枚举
-            {
-                auto res = std::move(WebSocketUtil::makeWebSocketFrame(
-                    "socket readed!:" + socketfile.getContent().at("path")));
-                std::cout << "callbacked!" << '\n';
-                socketfile.write(res);
-                return;
+                socketfile.write(HttpResponse::formLocalFile("index.html"));
             }
             return;
         });
-
+    httpServer.addCallbackFormat(Format{"/getHistory", Format::Type::same},
+                                 [](serverFile& socketfile)
+                                 {
+                                     if (socketfile.getAgreementType() ==
+                                         Protocol::HTTP) // 使用 Protocol 枚举
+                                     {
+                                         auto res = mysqldb.query("select * from massge");
+                                         if (!res)
+                                         {
+                                             std::cerr << mysqldb.getLastError() << '\n';
+                                             return;
+                                         }
+                                         std::string response = "";
+                                         std::vector<std::string> row;
+                                         while (!(row = mysqldb.fetchRow()).empty())
+                                         {
+                                             response += Message{row};
+                                         }
+                                         auto httpres = HttpResponse{200}.with_content(response);
+                                         socketfile.write(httpres);
+                                     }
+                                     return;
+                                 });
     httpServer.addCallbackFormat(
-        Format{"/ws", Format::Type::same},
-        [&static_files](serverFile& socketfile)
+        Format{"/wsconnect/%s", Format::Type::scanf},
+        [](serverFile& socketfile)
         {
-            auto& content = socketfile.getContent();
-            std::cout << "WebSocket消息已收到!" << std::endl;
-            // 打印客户端发送的消息(如果有)
-            if (content.find("message") != content.end())
-            {
-                std::cout << "客户端消息: " << content["message"] << std::endl;
-            }
-
-            // 准备回复消息
-            std::string replyText =
-                "Server received: " +
-                (content.find("message") != content.end() ? content["message"] : "no message");
-
-            // 使用原生write替代write_str_with_agreement
             if (socketfile.getAgreementType() == Protocol::HTTP) // 使用 Protocol 枚举
             {
-                std::string header = HttpServerUtil::makeHttpHead(200, replyText); //
-                // 使用HttpServerUtil中的函数 socketfile.write(header);
-                socketfile.write(replyText);
+                if (WebSocketUtil::shouldbeUpdataToWS(socketfile))
+                {
+                    socketfile.write(WebSocketUtil::makeWebSocketHandshake(socketfile));
+                    socketfile.upgradeProtocol(Protocol::WebSocket);
+                    // wsconnecting.emplace(socketfile.getSocketFile().getfd(), &socketfile);
+                    return;
+                }
+                else
+                {
+                    socketfile.write(HttpResponse{404});
+                    return;
+                }
             }
-            else if (socketfile.getAgreementType() == Protocol::WebSocket) // 使用 Protocol 枚举
+            else if (socketfile.getAgreementType() == Protocol::WebSocket)
             {
-                std::string frame = WebSocketUtil::makeWebSocketFrame(replyText); // Use enum
-                socketfile.write(frame);
+                auto pullmassges = Message{socketfile.getContent()["message"]};
+                mysqldb.query("...");
+                // for (auto each : wsconnecting)
+                // {
+                //     each.second->write(WebSocketResponse::text(pullmassges));
+                // }
             }
-        });
-    // httpServer.addCallbackFormat(Format{"/%s", Format::Type::scanf},
-    //                              [](serverFile& self)
-    //                              {
-    //                                  std::string path = &self.getContent()["path"][1];
-    //                                  auto file = HttpResponse::formLocalFile(path);
-    //                                  self.write(std::string(file)); // Explicit cast to string
-    //                              });
 
-    // httpServer.addCallbackFormat(Format{"/nonexistent.html", Format::Type::same},
-    //                              [](serverFile& self)
-    //                              {
-    //                                  std::string path = "404.html";
-    //                                  auto file = HttpResponse::formLocalFile(path);
-    //                                  self.write(std::string(file)); // Explicit cast
-    //                              });
-    // httpServer.addCallbackFormat(Format{"/", Format::Type::same},
-    //                              [](serverFile& self)
-    //                              {
-    //                                  std::string path = "index.html";
-    //                                  auto file = HttpResponse::formLocalFile(path);
-    //                                  self.write(std::string(file)); // Explicit cast
-    //                              });
+            return;
+        });
+
+    // 执行MySQL示例
+    // mysqlExample();
 
     coManagerInstance.getManager().add(httpServer);                 // Use getter for manager
     coManagerInstance.getManager().add(con);                        // Use getter for manager

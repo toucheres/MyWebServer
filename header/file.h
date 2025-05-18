@@ -48,6 +48,9 @@ struct SocketFile : public co_async
       public:
         friend SocketFile;
         socket_t fd = INVALID_SOCKET_VALUE; // 使用跨平台的socket类型
+        int getfd(){
+            return fd;
+        }
         // read
         std::vector<char> content = {};
         mutable size_t r_left = 0;
@@ -77,6 +80,7 @@ struct SocketFile : public co_async
     const std::string_view read_until(
         const std::string_view delimiter = "\r\n") const; // 添加新方法
     const std::string_view read_all() const;
+    int getfd();
     void writeFile(std::string file);
     bool setNonBlocking();
     void closeIt();

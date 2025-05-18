@@ -30,6 +30,8 @@ class HttpServer : public co_async
     //std::string processRequest(const std::string& request);
     std::forward_list<std::pair<Format, std::function<void(serverFile&)>>> callbacks_format;
     std::unordered_map<int, std::shared_ptr<serverFile>> fileMap; // Client connections
+    void processFiles();                                          // Changed return type to void
+    bool add(int fd);
 
   public:
     void autoLoginFile(LocalFiles& static_files);
@@ -38,8 +40,4 @@ class HttpServer : public co_async
     bool stop();
     void addCallbackFormat(Format format, std::function<void(serverFile&)> callback);
     int removeCallbackFormat(const Format& format);
-    
-    // 从HttpFiles移动过来的方法
-    bool add(int fd);
-    void processFiles(); // Changed return type to void
 };
