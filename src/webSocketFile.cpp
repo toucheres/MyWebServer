@@ -258,9 +258,33 @@ bool WebSocketUtil::shouldbeUpdataToWS(const serverFile& httpfile)
     return connectionUpgrade && upgradeValue == "websocket" && !key->second.empty();
 }
 
+// [TODO]升级多段处理
+// [TODO]添加区分正常事件接收与关闭连接的回调
 // WebSocket事件循环
 Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
 {
+    // 定义WebSocket解析状态
+    enum class ParseState
+    {
+        WAITING_HEADER,
+        WAITING_LENGTH,
+        WAITING_MASK,
+        WAITING_PAYLOAD
+    };
+
+    ParseState state = ParseState::WAITING_HEADER;
+
+    // 解析状态相关变量
+    bool fin = false;
+    uint8_t opcode = 0;
+    bool masked = false;
+    size_t payload_len = 0;
+    size_t header_size = 2;
+    size_t length_bytes_needed = 0;
+    std::array<uint8_t, 4> mask_key = {0, 0, 0, 0};
+    std::string payload;
+    std::string frame_data;
+
     while (self->getStatus())
     {
         SocketFile& sfile = self->getSocketFile();
@@ -274,24 +298,232 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
             continue;
         }
 
-        std::string_view data = sfile.read_added();
-        if (!data.empty())
+        // 根据当前状态处理数据
+        switch (state)
         {
-            // 解析WebSocket帧
-            std::string frameData(data.data(), data.size());
-            std::string message = WebSocketUtil::parseWebSocketFrame(frameData);
-
-            // 存储消息内容
-            if (!message.empty())
+        case ParseState::WAITING_HEADER:
+        {
+            // 精确读取2字节的帧头
+            std::string_view header_bytes = sfile.read_num(2);
+            if (header_bytes.size() < 2)
             {
-                self->getContent()["message"] = message;
+                co_yield {};
+                continue;
+            }
+
+            // 保存帧数据
+            frame_data = std::string(header_bytes);
+
+            // 解析基本帧头
+            fin = (header_bytes[0] & 0x80) != 0;
+            opcode = header_bytes[0] & 0x0F;
+            masked = (header_bytes[1] & 0x80) != 0;
+            uint8_t payload_len_initial = header_bytes[1] & 0x7F;
+
+            // 根据载荷长度确定下一步
+            if (payload_len_initial < 126)
+            {
+                payload_len = payload_len_initial;
+                header_size = 2;
+                state = masked ? ParseState::WAITING_MASK : ParseState::WAITING_PAYLOAD;
+            }
+            else if (payload_len_initial == 126)
+            {
+                length_bytes_needed = 2;
+                state = ParseState::WAITING_LENGTH;
+            }
+            else // payload_len_initial == 127
+            {
+                length_bytes_needed = 8;
+                state = ParseState::WAITING_LENGTH;
+            }
+            break;
+        }
+
+        case ParseState::WAITING_LENGTH:
+        {
+            // 精确读取扩展长度字段
+            std::string_view length_bytes = sfile.read_num(length_bytes_needed);
+            if (length_bytes.size() < length_bytes_needed)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(length_bytes);
+
+            // 解析实际长度
+            if (length_bytes_needed == 2)
+            {
+                payload_len = ((static_cast<uint16_t>(static_cast<uint8_t>(length_bytes[0])) << 8) |
+                               static_cast<uint8_t>(length_bytes[1]));
+            }
+            else // length_bytes_needed == 8
+            {
+                payload_len = 0;
+                for (int i = 0; i < 8; ++i)
+                {
+                    payload_len = (payload_len << 8) | static_cast<uint8_t>(length_bytes[i]);
+                }
+            }
+
+            state = masked ? ParseState::WAITING_MASK : ParseState::WAITING_PAYLOAD;
+            break;
+        }
+
+        case ParseState::WAITING_MASK:
+        {
+            // 精确读取4字节掩码
+            std::string_view mask_bytes = sfile.read_num(4);
+            if (mask_bytes.size() < 4)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(mask_bytes);
+
+            // 保存掩码键值
+            for (int i = 0; i < 4; ++i)
+            {
+                mask_key[i] = static_cast<uint8_t>(mask_bytes[i]);
+            }
+
+            state = ParseState::WAITING_PAYLOAD;
+            break;
+        }
+
+        case ParseState::WAITING_PAYLOAD:
+        {
+            // 检查是否有有效载荷
+            if (payload_len == 0)
+            {
+                // 没有有效载荷，直接处理帧
+                // 处理完整的帧，根据opcode执行相应操作
+                switch (opcode)
+                {
+                case static_cast<uint8_t>(WebSocketOpcode::CLOSE):
+                {
+                    // 回应关闭帧并终止连接
+                    self->write(std::string(WebSocketResponse::close()));
+                    self->setFileState(false);
+                    break;
+                }
+                case static_cast<uint8_t>(WebSocketOpcode::PING):
+                {
+                    // 回应Ping帧
+                    self->write(std::string(WebSocketResponse::pong("")));
+                    break;
+                }
+                // 空载荷的文本或二进制消息
+                case static_cast<uint8_t>(WebSocketOpcode::TEXT):
+                case static_cast<uint8_t>(WebSocketOpcode::BINARY):
+                {
+                    // 更新内容
+                    self->getContent()["message"] = "";
+                    self->getContent()["type"] = (opcode == static_cast<uint8_t>(WebSocketOpcode::TEXT)) ? "text" : "binary";
+                    
+                    // 调用回调处理消息
+                    self->handle();
+                    break;
+                }
+                }
+                
+                // 重置状态，准备处理下一帧
+                state = ParseState::WAITING_HEADER;
+                frame_data.clear();
+                break;
+            }
+
+            // 精确读取有效载荷数据
+            std::string_view payload_bytes = sfile.read_num(payload_len);
+            if (payload_bytes.size() < payload_len)
+            {
+                co_yield {};
+                continue;
+            }
+
+            // 添加到帧数据
+            frame_data.append(payload_bytes);
+
+            // 解码有效载荷
+            payload.clear();
+            payload.reserve(payload_len);
+
+            for (size_t i = 0; i < payload_len; ++i)
+            {
+                char byte = payload_bytes[i];
+                if (masked)
+                {
+                    byte ^= mask_key[i % 4];
+                }
+                payload.push_back(byte);
+            }
+
+            // 处理完整的帧，根据opcode执行相应操作
+            switch (opcode)
+            {
+            case static_cast<uint8_t>(WebSocketOpcode::CLOSE):
+            {
+                // 解析关闭代码和原因（如果存在）
+                uint16_t close_code = 1000; // 默认正常关闭
+                std::string reason;
+                
+                if (payload.size() >= 2) {
+                    close_code = (static_cast<uint16_t>(static_cast<uint8_t>(payload[0])) << 8) | 
+                                  static_cast<uint8_t>(payload[1]);
+                    if (payload.size() > 2) {
+                        reason = payload.substr(2);
+                    }
+                }
+                
+                // 回应关闭帧并终止连接
+                self->write(std::string(WebSocketResponse::close(close_code, reason)));
+                self->setFileState(false);
+                break;
+            }
+            case static_cast<uint8_t>(WebSocketOpcode::PING):
+            {
+                // 回应Ping帧，将接收到的载荷作为Pong的载荷
+                self->write(std::string(WebSocketResponse::pong(payload)));
+                break;
+            }
+            case static_cast<uint8_t>(WebSocketOpcode::TEXT):
+            case static_cast<uint8_t>(WebSocketOpcode::BINARY):
+            {
+                // 更新内容
+                self->getContent()["message"] = payload;
+                self->getContent()["type"] = (opcode == static_cast<uint8_t>(WebSocketOpcode::TEXT)) ? "text" : "binary";
+                
                 // 调用回调处理消息
                 self->handle();
+                break;
             }
+            case static_cast<uint8_t>(WebSocketOpcode::PONG):
+                // 收到Pong，不需要特殊处理
+                break;
+            case static_cast<uint8_t>(WebSocketOpcode::CONTINUATION):
+                // 分片消息处理（此处简化实现）
+                // 实际应用中应该累积分片消息直到收到带有FIN标记的分片
+                break;
+            default:
+                // 未知操作码，发送协议错误的关闭帧
+                self->write(std::string(WebSocketResponse::close(1002, "Protocol error: unknown opcode")));
+                break;
+            }
+
+            // 重置状态，准备处理下一帧
+            state = ParseState::WAITING_HEADER;
+            frame_data.clear();
+            break;
         }
+        } // end of switch
 
         co_yield {};
     }
+
     co_return;
 }
 
