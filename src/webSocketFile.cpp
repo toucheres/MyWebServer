@@ -514,17 +514,16 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                 self->getContent()["message"] = payload;
                 self->getContent()["type"] =
                     (opcode == static_cast<uint8_t>(WebSocketOpcode::TEXT)) ? "text" : "binary";
-
                 // 调用回调处理消息
                 self->handle();
+                self->getContent()["message"] = "";
                 break;
             }
             case static_cast<uint8_t>(WebSocketOpcode::PONG):
                 // 收到Pong，不需要特殊处理
                 break;
             case static_cast<uint8_t>(WebSocketOpcode::CONTINUATION):
-                // 分片消息处理（此处简化实现）
-                // 实际应用中应该累积分片消息直到收到带有FIN标记的分片
+                self->getContent()["message"] += payload;
                 break;
             default:
                 // 未知操作码，发送协议错误的关闭帧
