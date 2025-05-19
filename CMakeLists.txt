@@ -1,9 +1,30 @@
 cmake_minimum_required(VERSION 3.16)
-project(my_project LANGUAGES CXX)
+project(MyWebServer LANGUAGES CXX)
 
+# 设置C++标准
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# 平台特定设置
+if(WIN32)
+    # Windows特定设置
+    add_definitions(-D_WIN32_WINNT=0x0601)
+    if(MSVC)
+        # MSVC编译器特定标志
+        add_compile_options(/W4 /MP)
+    endif()
+else()
+    # Linux/macOS特定设置
+    add_compile_options(-Wall -Wextra)
+endif()
+
+# 设置默认构建类型为Release，如果没有指定
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
+    message(STATUS "Build type not specified, defaulting to Release")
+endif()
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 # 查找 OpenSSL 包
 find_package(OpenSSL REQUIRED)
@@ -37,30 +58,68 @@ else()
     message(FATAL_ERROR "MySQL client library not found. Install libmysqlclient-dev or equivalent package.")
 endif()
 
-# 添加nlohmann/json库
-include(FetchContent)
-FetchContent_Declare(
-    json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.12.0  # 可以更换为最新版本
-)
-FetchContent_MakeAvailable(json)
+# 收集源文件
+file(GLOB LIB_SRC src/*.cpp)
 
-# 不需要再次查找 nlohmann_json 包
-# 删除这一行: find_package(nlohmann_json 3.12.0 REQUIRED)
-
-file(GLOB SRC src/*.cpp)
-# 创建您的可执行文件
-add_executable(my_app ${SRC})
-target_include_directories(my_app PRIVATE 
+# 创建核心库
+add_library(webserver_lib STATIC ${LIB_SRC})
+target_include_directories(webserver_lib PUBLIC 
     header 
     ${OPENSSL_INCLUDE_DIR}
     ${MYSQL_INCLUDE_DIRS}
 )
-# 链接 OpenSSL 和 MySQL 库
-target_link_libraries(my_app PRIVATE 
+target_link_libraries(webserver_lib PUBLIC 
     OpenSSL::SSL 
     OpenSSL::Crypto
     ${MYSQL_LIBRARIES}
-    nlohmann_json::nlohmann_json
 )
+
+# 添加demo源文件
+file(GLOB DEMO_SRC demo/*.cpp)
+
+# 创建demo可执行文件
+add_executable(chat_demo ${DEMO_SRC})
+target_link_libraries(chat_demo PRIVATE webserver_lib)
+set_target_properties(chat_demo PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
+# 复制demo文件夹下的静态资源到输出目录
+add_custom_command(TARGET chat_demo POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/demo/index.html
+        $<TARGET_FILE_DIR:chat_demo>/index.html
+)
+
+# 添加安装目标
+install(TARGETS chat_demo
+    RUNTIME DESTINATION bin
+)
+
+# 安装头文件
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/header/
+    DESTINATION include/MyWebServer
+    FILES_MATCHING PATTERN "*.h*"
+)
+
+# 安装库文件
+install(TARGETS webserver_lib
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+# 打印编译指南
+message(STATUS "")
+message(STATUS "=== MyWebServer Build Instructions ===")
+message(STATUS "1. 创建构建目录: mkdir build && cd build")
+message(STATUS "2. 生成构建文件:")
+message(STATUS "   - Linux/macOS: cmake ..")
+message(STATUS "   - Windows: cmake ..")
+message(STATUS "3. 编译:")
+message(STATUS "   - Linux/macOS: make")
+message(STATUS "   - Windows: cmake --build . --config Release")
+message(STATUS "4. 运行:")
+message(STATUS "   - Linux/macOS: ./bin/chat_demo")
+message(STATUS "   - Windows: .\\bin\\Release\\chat_demo.exe")
+message(STATUS "====================================")
+message(STATUS "")

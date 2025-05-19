@@ -47,7 +47,6 @@ class Format
     
     // 工具方法：使用scanf格式解析字符串
     std::optional<ParseResult> parseScanf(const std::string& str) const;
-    
     // 工具方法：使用正则表达式解析字符串
     std::optional<ParseResult> parseRegex(const std::string& str) const;
 };
