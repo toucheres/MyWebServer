@@ -14,8 +14,40 @@
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
+#include <random> // 添加随机数生成支持
 #include <string>
 #include <webSocketFile.h> // For Protocol::WebSocket
+
+// 生成随机会话ID
+std::string generateRandomSessionId(size_t length = 32)
+{
+    static const char alphanum[] = "0123456789"
+                                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                   "abcdefghijklmnopqrstuvwxyz";
+    std::string result;
+    result.reserve(length);
+
+    // 使用随机设备作为种子
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, sizeof(alphanum) - 2);
+
+    for (size_t i = 0; i < length; ++i)
+    {
+        result += alphanum[dis(gen)];
+    }
+
+    return result;
+}
+
+// 格式化时间
+std::string formatTime(std::time_t time)
+{
+    char buffer[30];
+    std::tm* timeinfo = std::localtime(&time);
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+    return std::string(buffer);
+}
 
 struct Message
 {
@@ -223,43 +255,163 @@ int main()
             return;
         });
     httpServer.addCallbackFormat(
-        Format{"/login/%s/%s", Format::Type::same},
+        Format{"/checkSession", Format::Type::same},
+        [](serverFile& socketfile)
+        {
+            // 从请求中获取Cookie
+            std::string cookieHeader = socketfile.getContent()["Cookie"];
+            std::string sessionId = "";
+
+            // 解析Cookie中的sessionId
+            size_t pos = cookieHeader.find("sessionId=");
+            if (pos != std::string::npos)
+            {
+                pos += 10; // "sessionId="的长度
+                size_t end = cookieHeader.find(';', pos);
+                if (end != std::string::npos)
+                {
+                    sessionId = cookieHeader.substr(pos, end - pos);
+                }
+                else
+                {
+                    sessionId = cookieHeader.substr(pos);
+                }
+            }
+
+            // 验证会话
+            if (!sessionId.empty() && tekon_name.find(sessionId) != tekon_name.end())
+            {
+                // 从会话中提取用户名
+                std::string sessionInfo = tekon_name[sessionId];
+                std::string username = "";
+
+                size_t usernamePos = sessionInfo.find("username:");
+                if (usernamePos != std::string::npos)
+                {
+                    usernamePos += 9; // "username:"的长度
+                    size_t usernameEnd = sessionInfo.find('\n', usernamePos);
+                    if (usernameEnd != std::string::npos)
+                    {
+                        username = sessionInfo.substr(usernamePos, usernameEnd - usernamePos);
+                    }
+                }
+
+                // 返回成功响应
+                HttpResponse response{200};
+                response.with_content("{\"status\":\"success\",\"username\":\"" + username + "\"}");
+                socketfile.write(response);
+            }
+            else
+            {
+                // 会话无效
+                HttpResponse response{401};
+                response.with_content("{\"status\":\"error\",\"message\":\"未登录或会话已过期\"}");
+                socketfile.write(response);
+            }
+        });
+    httpServer.addCallbackFormat(
+        Format{"/login/%s/%s", Format::Type::scanf},
         [](serverFile& socketfile)
         {
             std::optional<Format::ParseResult> res =
-                Format{"/login/%s/%s", Format::Type::same}.parse(socketfile.getContent()["path"]);
+                Format{"/login/%s/%s", Format::Type::scanf}.parse(socketfile.getContent()["path"]);
             if (res)
             {
                 auto username = std::get<std::string>((*res)[0]);
                 auto password = std::get<std::string>((*res)[1]);
-                auto res = mysqldb.query("select * from users where username = " + username + ", " +
-                                         "password = " + password);
-                if (res)
-                {
-                    std::string sessionId = std::randomstr();
 
-                    // 在服务器端存储会话信息
-                    tekon_name[sessionId] = {
-                        "username:" + username+'\n'+
-                        "loginTime:" + username+'\n'+
-                        "expiryTime:" + username+'\n'
-                    };
-                    // 返回带有Set-Cookie头的响应
-                    HttpResponse response{200};
-                    response.addHeader("Set-Cookie",
-                                       "sessionId=" + sessionId + "; Path=/; HttpOnly");
-                    socketfile.write(response);
+                // 修正SQL查询语句
+                auto query_res = mysqldb.query("SELECT * FROM users WHERE username = '" + username +
+                                               "' AND password = '" + password + "'");
+                if (query_res)
+                {
+                    // 检查是否有结果
+                    auto row = mysqldb.fetchRow();
+                    if (!row.empty())
+                    {
+                        // 生成随机会话ID
+                        std::string sessionId = generateRandomSessionId();
+
+                        // 获取当前时间
+                        auto now = std::chrono::system_clock::now();
+                        auto now_time_t = std::chrono::system_clock::to_time_t(now);
+
+                        // 设置过期时间（例如，1小时后）
+                        auto expiry = now + std::chrono::hours(1);
+                        auto expiry_time_t = std::chrono::system_clock::to_time_t(expiry);
+
+                        // 格式化时间
+                        std::string currentTime = formatTime(now_time_t);
+                        std::string expiryTime = formatTime(expiry_time_t);
+
+                        // 在服务器端存储会话信息
+                        tekon_name[sessionId] = "username:" + username + '\n' +
+                                                "loginTime:" + currentTime + '\n' +
+                                                "expiryTime:" + expiryTime + '\n';
+
+                        // 返回带有Set-Cookie头的响应
+                        HttpResponse response{200};
+                        response.addHeader("Set-Cookie", "sessionId=" + sessionId +
+                                                             "; Path=/; HttpOnly; Max-Age=3600");
+                        response.with_content(
+                            "{\"status\":\"success\",\"message\":\"登录成功\",\"username\":\"" +
+                            username + "\"}");
+                        socketfile.write(response);
+                    }
+                    else
+                    {
+                        // 无匹配用户
+                        HttpResponse response{401};
+                        response.with_content(
+                            "{\"status\":\"error\",\"message\":\"用户名或密码错误\"}");
+                        socketfile.write(response);
+                    }
                 }
                 else
                 {
-                    socketfile.write(HttpResponse{404, "unkown user or wrong password"});
+                    HttpResponse response{500};
+                    response.with_content("{\"status\":\"error\",\"message\":\"数据库查询出错\"}");
+                    socketfile.write(response);
                 }
             }
             else
             {
-                socketfile.write(HttpResponse{404, "unkown format"});
+                socketfile.write(HttpResponse{400}.with_content(
+                    "{\"status\":\"error\",\"message\":\"请求格式错误\"}"));
             }
         });
+
+    // 确保数据库中有users表，如果没有则创建
+    if (!mysqldb.query("CREATE TABLE IF NOT EXISTS users ("
+                       "id INT AUTO_INCREMENT PRIMARY KEY, "
+                       "username VARCHAR(50) NOT NULL UNIQUE, "
+                       "password VARCHAR(100) NOT NULL, "
+                       "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"))
+    {
+        std::cerr << "创建users表失败: " << mysqldb.getLastError() << '\n';
+    }
+    else
+    {
+        // 检查是否有默认用户，如果没有则添加一个
+        auto res = mysqldb.query("SELECT COUNT(*) FROM users");
+        if (res)
+        {
+            auto row = mysqldb.fetchRow();
+            if (!row.empty() && std::stoi(row[0]) == 0)
+            {
+                // 添加默认管理员用户
+                if (!mysqldb.query(
+                        "INSERT INTO users (username, password) VALUES ('admin', 'admin123')"))
+                {
+                    std::cerr << "添加默认用户失败: " << mysqldb.getLastError() << '\n';
+                }
+                else
+                {
+                    std::cout << "已添加默认用户：admin/admin123\n";
+                }
+            }
+        }
+    }
 
     // 确保数据库中有messages表，如果没有则创建
     if (!mysqldb.query("CREATE TABLE IF NOT EXISTS messages ("

@@ -119,12 +119,91 @@
         .disconnected {
             color: red;
         }
+        
+        /* 添加登录表单样式 */
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .login-form {
+            margin-top: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        .login-btn {
+            width: 100%;
+            padding: 10px;
+            background: #4a76a8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        
+        .login-btn:hover {
+            background: #3a5a78;
+        }
+        
+        .error-message {
+            color: red;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- 登录界面 -->
+    <div id="login-page" class="login-container">
+        <h2>聊天室登录</h2>
+        <div class="login-form">
+            <div class="form-group">
+                <label for="login-username">用户名</label>
+                <input type="text" id="login-username" placeholder="请输入用户名">
+            </div>
+            <div class="form-group">
+                <label for="login-password">密码</label>
+                <input type="password" id="login-password" placeholder="请输入密码">
+            </div>
+            <button id="login-btn" class="login-btn">登录</button>
+            <div id="login-error" class="error-message hidden"></div>
+        </div>
+    </div>
+    
+    <!-- 聊天室界面 -->
+    <div id="chat-container" class="container hidden">
         <div class="header">
             <h1>实时聊天室</h1>
+            <div id="user-display"></div>
             <div id="connection-status" class="connection-status disconnected">未连接</div>
         </div>
         <div id="chat-area" class="chat-area">
@@ -133,24 +212,153 @@
         <div class="input-area">
             <div class="user-info">
                 <label for="username">用户名：</label>
-                <input type="text" id="username" placeholder="请输入你的用户名">
+                <input type="text" id="username" placeholder="请输入你的用户名" readonly>
             </div>
             <div class="message-input">
                 <textarea id="message" placeholder="请输入消息..."></textarea>
                 <button id="send-btn">发送</button>
             </div>
+            <button id="logout-btn" style="margin-top: 10px; padding: 5px 10px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">退出登录</button>
         </div>
     </div>
 
     <script>
+        // 全局变量
         let socket = null;
         let username = '';
+        let isLoggedIn = false;
+        
+        // DOM 元素
+        const loginPage = document.getElementById('login-page');
+        const chatContainer = document.getElementById('chat-container');
+        const loginUsername = document.getElementById('login-username');
+        const loginPassword = document.getElementById('login-password');
+        const loginBtn = document.getElementById('login-btn');
+        const loginError = document.getElementById('login-error');
+        const userDisplay = document.getElementById('user-display');
         const chatArea = document.getElementById('chat-area');
         const usernameInput = document.getElementById('username');
         const messageInput = document.getElementById('message');
         const sendBtn = document.getElementById('send-btn');
+        const logoutBtn = document.getElementById('logout-btn');
         const connectionStatus = document.getElementById('connection-status');
-
+        
+        // 检查用户是否已登录（检查cookie）
+        function checkLoginStatus() {
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                cookie = cookie.trim();
+                if (cookie.startsWith('sessionId=')) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        // 页面加载时检查登录状态
+        window.addEventListener('load', () => {
+            isLoggedIn = checkLoginStatus();
+            
+            if (isLoggedIn) {
+                // 验证会话有效性
+                fetch('/checkSession')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // 会话有效，使用返回的用户名
+                            username = data.username;
+                            showChatPage();
+                            fetchHistoryMessages();
+                            connectWebSocket();
+                        } else {
+                            // 会话无效，显示登录页面
+                            showLoginPage();
+                        }
+                    })
+                    .catch(() => {
+                        // 出错，显示登录页面
+                        showLoginPage();
+                    });
+            } else {
+                // 未登录，显示登录页面
+                showLoginPage();
+            }
+            
+            // 尝试从本地存储加载用户名
+            const savedUsername = localStorage.getItem('chatUsername');
+            if (savedUsername) {
+                loginUsername.value = savedUsername;
+            }
+        });
+        
+        // 显示登录页面
+        function showLoginPage() {
+            loginPage.classList.remove('hidden');
+            chatContainer.classList.add('hidden');
+        }
+        
+        // 显示聊天页面
+        function showChatPage() {
+            loginPage.classList.add('hidden');
+            chatContainer.classList.remove('hidden');
+            usernameInput.value = username;
+            userDisplay.textContent = `当前用户: ${username}`;
+        }
+        
+        // 登录处理
+        loginBtn.addEventListener('click', () => {
+            const loginUser = loginUsername.value.trim();
+            const password = loginPassword.value.trim();
+            
+            if (!loginUser || !password) {
+                loginError.textContent = '请输入用户名和密码';
+                loginError.classList.remove('hidden');
+                return;
+            }
+            
+            // 记住用户名
+            localStorage.setItem('chatUsername', loginUser);
+            
+            // 发送登录请求
+            fetch(`/login/${encodeURIComponent(loginUser)}/${encodeURIComponent(password)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        username = data.username;
+                        isLoggedIn = true;
+                        showChatPage();
+                        fetchHistoryMessages();
+                        connectWebSocket();
+                    } else {
+                        loginError.textContent = data.message || '登录失败，请检查用户名和密码';
+                        loginError.classList.remove('hidden');
+                    }
+                })
+                .catch(error => {
+                    console.error('登录请求失败:', error);
+                    loginError.textContent = '登录请求失败，请稍后再试';
+                    loginError.classList.remove('hidden');
+                });
+        });
+        
+        // 退出登录
+        logoutBtn.addEventListener('click', () => {
+            // 清除cookie
+            document.cookie = 'sessionId=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+            
+            // 关闭WebSocket连接
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+            
+            // 重置状态
+            isLoggedIn = false;
+            username = '';
+            
+            // 显示登录页面
+            showLoginPage();
+        });
+        
         // 页面加载时获取历史消息
         window.addEventListener('load', () => {
             fetchHistoryMessages();
@@ -218,23 +426,19 @@
 
         // 发送消息
         function sendMessage() {
-            username = usernameInput.value.trim();
-            const message = messageInput.value.trim();
-            
-            if (!username) {
-                alert('请输入用户名');
-                usernameInput.focus();
+            if (!isLoggedIn) {
+                alert('请先登录');
+                showLoginPage();
                 return;
             }
+            
+            const message = messageInput.value.trim();
             
             if (!message) {
                 alert('请输入消息内容');
                 messageInput.focus();
                 return;
             }
-            
-            // 保存用户名到本地存储
-            localStorage.setItem('chatUsername', username);
             
             if (!socket || socket.readyState !== WebSocket.OPEN) {
                 connectWebSocket();
