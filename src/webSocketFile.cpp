@@ -1,6 +1,6 @@
 #include "webSocketFile.h"
-#include "serverFile.h"
 #include "protocol_constants.h" // 新增包含
+#include "serverFile.h"
 #include <algorithm>
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
@@ -14,7 +14,8 @@ bool WebSocketUtil::autoRegistered = WebSocketUtil::initialize();
 // 初始化方法，注册WebSocket协议处理函数
 bool WebSocketUtil::initialize()
 {
-    return serverFile::registerProtocolHandler(Protocol::WebSocket, WebSocketUtil::wsEventloop); // 使用 Protocol 枚举
+    return serverFile::registerProtocolHandler(Protocol::WebSocket,
+                                               WebSocketUtil::wsEventloop); // 使用 Protocol 枚举
 }
 
 // WebSocket帧操作
@@ -409,6 +410,12 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                     // 回应关闭帧并终止连接
                     self->write(std::string(WebSocketResponse::close()));
                     self->setFileState(false);
+                    if (callcbackWhenClose)
+                    {
+                        self->getContent()["message"] = "";
+                        self->getContent()["type"] = "close";
+                        self->handle();
+                    }
                     break;
                 }
                 case static_cast<uint8_t>(WebSocketOpcode::PING):
@@ -419,18 +426,20 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                 }
                 // 空载荷的文本或二进制消息
                 case static_cast<uint8_t>(WebSocketOpcode::TEXT):
+                    [[fallthrough]];
                 case static_cast<uint8_t>(WebSocketOpcode::BINARY):
                 {
                     // 更新内容
                     self->getContent()["message"] = "";
-                    self->getContent()["type"] = (opcode == static_cast<uint8_t>(WebSocketOpcode::TEXT)) ? "text" : "binary";
-                    
+                    self->getContent()["type"] =
+                        (opcode == static_cast<uint8_t>(WebSocketOpcode::TEXT)) ? "text" : "binary";
+
                     // 调用回调处理消息
                     self->handle();
                     break;
                 }
                 }
-                
+
                 // 重置状态，准备处理下一帧
                 state = ParseState::WAITING_HEADER;
                 frame_data.clear();
@@ -470,18 +479,25 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                 // 解析关闭代码和原因（如果存在）
                 uint16_t close_code = 1000; // 默认正常关闭
                 std::string reason;
-                
-                if (payload.size() >= 2) {
-                    close_code = (static_cast<uint16_t>(static_cast<uint8_t>(payload[0])) << 8) | 
-                                  static_cast<uint8_t>(payload[1]);
-                    if (payload.size() > 2) {
+
+                if (payload.size() >= 2)
+                {
+                    close_code = (static_cast<uint16_t>(static_cast<uint8_t>(payload[0])) << 8) |
+                                 static_cast<uint8_t>(payload[1]);
+                    if (payload.size() > 2)
+                    {
                         reason = payload.substr(2);
                     }
                 }
-                
                 // 回应关闭帧并终止连接
                 self->write(std::string(WebSocketResponse::close(close_code, reason)));
                 self->setFileState(false);
+                if (callcbackWhenClose) [[unlikely]]
+                {
+                    self->getContent()["message"] = "";
+                    self->getContent()["type"] = "close";
+                    self->handle();
+                }
                 break;
             }
             case static_cast<uint8_t>(WebSocketOpcode::PING):
@@ -491,12 +507,14 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                 break;
             }
             case static_cast<uint8_t>(WebSocketOpcode::TEXT):
+                [[fallthrough]];
             case static_cast<uint8_t>(WebSocketOpcode::BINARY):
             {
                 // 更新内容
                 self->getContent()["message"] = payload;
-                self->getContent()["type"] = (opcode == static_cast<uint8_t>(WebSocketOpcode::TEXT)) ? "text" : "binary";
-                
+                self->getContent()["type"] =
+                    (opcode == static_cast<uint8_t>(WebSocketOpcode::TEXT)) ? "text" : "binary";
+
                 // 调用回调处理消息
                 self->handle();
                 break;
@@ -510,7 +528,8 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
                 break;
             default:
                 // 未知操作码，发送协议错误的关闭帧
-                self->write(std::string(WebSocketResponse::close(1002, "Protocol error: unknown opcode")));
+                self->write(
+                    std::string(WebSocketResponse::close(1002, "Protocol error: unknown opcode")));
                 break;
             }
 

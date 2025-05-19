@@ -10,6 +10,7 @@ class WebSocketUtil
   private:
     // 添加自动注册WebSocket协议处理函数的静态变量
     static bool autoRegistered;
+    inline static bool callcbackWhenClose = false;
 
   public:
     // WebSocket操作码枚举
