@@ -140,6 +140,16 @@ std::optional<Format::ParseResult> Format::parseScanf(const std::string& str) co
             {
                 // 找到格式说明符的类型字符
                 size_t j = i + 1;
+                
+                // 处理扫描集 %[...]
+                if (j < format_str.size() && format_str[j] == '[')
+                {
+                    // 对于扫描集，我们将其视为 's' 类型（字符串）
+                    formatTypes.push_back('s');
+                    continue;
+                }
+                
+                // 处理普通格式说明符
                 while (j < format_str.size() && !std::isalpha(format_str[j]))
                 {
                     ++j;

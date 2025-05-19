@@ -310,11 +310,12 @@ int main()
             }
         });
     httpServer.addCallbackFormat(
-        Format{"/login/%s/%s", Format::Type::scanf},
+        Format{"/login/%[^/]/%s", Format::Type::scanf},
         [](serverFile& socketfile)
         {
             std::optional<Format::ParseResult> res =
-                Format{"/login/%s/%s", Format::Type::scanf}.parse(socketfile.getContent()["path"]);
+                Format{"/login/%[^/]/%s", Format::Type::scanf}.parse(
+                    socketfile.getContent()["path"]);
             if (res)
             {
                 auto username = std::get<std::string>((*res)[0]);
@@ -373,6 +374,77 @@ int main()
                     response.with_content("{\"status\":\"error\",\"message\":\"数据库查询出错\"}");
                     socketfile.write(response);
                 }
+            }
+            else
+            {
+                socketfile.write(HttpResponse{400}.with_content(
+                    "{\"status\":\"error\",\"message\":\"请求格式错误\"}"));
+            }
+        });
+
+    // 用户注册
+    httpServer.addCallbackFormat(
+        Format{"/register/%[^/]/%s", Format::Type::scanf},
+        [](serverFile& socketfile)
+        {
+            std::optional<Format::ParseResult> res =
+                Format{"/register/%[^/]/%s", Format::Type::scanf}.parse(
+                    socketfile.getContent()["path"]);
+            if (res)
+            {
+                auto username = std::get<std::string>((*res)[0]);
+                auto password = std::get<std::string>((*res)[1]);
+
+                // 验证用户名和密码
+                if (username.length() < 3)
+                {
+                    HttpResponse response{400};
+                    response.with_content("{\"status\":\"error\",\"message\":\"用户名至少需要3个字符\"}");
+                    socketfile.write(response);
+                    return;
+                }
+
+                if (password.length() < 6)
+                {
+                    HttpResponse response{400};
+                    response.with_content("{\"status\":\"error\",\"message\":\"密码至少需要6个字符\"}");
+                    socketfile.write(response);
+                    return;
+                }
+
+                // 检查用户名是否已存在
+                auto query_res = mysqldb.query("SELECT * FROM users WHERE username = '" + username + "'");
+                if (!query_res)
+                {
+                    HttpResponse response{500};
+                    response.with_content("{\"status\":\"error\",\"message\":\"数据库查询出错\"}");
+                    socketfile.write(response);
+                    return;
+                }
+
+                if (!mysqldb.fetchRow().empty())
+                {
+                    // 用户名已存在
+                    HttpResponse response{409}; // Conflict
+                    response.with_content("{\"status\":\"error\",\"message\":\"用户名已存在\"}");
+                    socketfile.write(response);
+                    return;
+                }
+
+                // 插入新用户
+                if (!mysqldb.query(
+                        "INSERT INTO users (username, password) VALUES ('" + username + "', '" + password + "')"))
+                {
+                    HttpResponse response{500};
+                    response.with_content("{\"status\":\"error\",\"message\":\"创建用户失败\"}");
+                    socketfile.write(response);
+                    return;
+                }
+
+                // 注册成功
+                HttpResponse response{200};
+                response.with_content("{\"status\":\"success\",\"message\":\"注册成功\"}");
+                socketfile.write(response);
             }
             else
             {

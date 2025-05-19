@@ -179,13 +179,30 @@
         .hidden {
             display: none;
         }
+        
+        /* 切换按钮样式 */
+        .switch-form {
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        
+        .switch-form a {
+            color: #4a76a8;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        
+        /* 新增注册表单样式 */
+        .register-form {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
     <!-- 登录界面 -->
     <div id="login-page" class="login-container">
-        <h2>聊天室登录</h2>
-        <div class="login-form">
+        <h2 id="login-title">聊天室登录</h2>
+        <div id="login-form" class="login-form">
             <div class="form-group">
                 <label for="login-username">用户名</label>
                 <input type="text" id="login-username" placeholder="请输入用户名">
@@ -196,6 +213,30 @@
             </div>
             <button id="login-btn" class="login-btn">登录</button>
             <div id="login-error" class="error-message hidden"></div>
+            <div class="switch-form">
+                还没有账号？<a id="switch-to-register">立即注册</a>
+            </div>
+        </div>
+        
+        <!-- 新增注册表单 -->
+        <div id="register-form" class="register-form hidden">
+            <div class="form-group">
+                <label for="register-username">用户名</label>
+                <input type="text" id="register-username" placeholder="请输入用户名">
+            </div>
+            <div class="form-group">
+                <label for="register-password">密码</label>
+                <input type="password" id="register-password" placeholder="请输入密码">
+            </div>
+            <div class="form-group">
+                <label for="register-confirm-password">确认密码</label>
+                <input type="password" id="register-confirm-password" placeholder="请再次输入密码">
+            </div>
+            <button id="register-btn" class="login-btn">注册</button>
+            <div id="register-error" class="error-message hidden"></div>
+            <div class="switch-form">
+                已有账号？<a id="switch-to-login">返回登录</a>
+            </div>
         </div>
     </div>
     
@@ -231,10 +272,20 @@
         // DOM 元素
         const loginPage = document.getElementById('login-page');
         const chatContainer = document.getElementById('chat-container');
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const loginTitle = document.getElementById('login-title');
+        const switchToRegister = document.getElementById('switch-to-register');
+        const switchToLogin = document.getElementById('switch-to-login');
         const loginUsername = document.getElementById('login-username');
         const loginPassword = document.getElementById('login-password');
+        const registerUsername = document.getElementById('register-username');
+        const registerPassword = document.getElementById('register-password');
+        const registerConfirmPassword = document.getElementById('register-confirm-password');
         const loginBtn = document.getElementById('login-btn');
+        const registerBtn = document.getElementById('register-btn');
         const loginError = document.getElementById('login-error');
+        const registerError = document.getElementById('register-error');
         const userDisplay = document.getElementById('user-display');
         const chatArea = document.getElementById('chat-area');
         const usernameInput = document.getElementById('username');
@@ -338,6 +389,94 @@
                     console.error('登录请求失败:', error);
                     loginError.textContent = '登录请求失败，请稍后再试';
                     loginError.classList.remove('hidden');
+                });
+        });
+        
+        // 切换到注册表单
+        switchToRegister.addEventListener('click', () => {
+            loginForm.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+            loginTitle.textContent = '用户注册';
+            registerError.classList.add('hidden');
+        });
+        
+        // 切换到登录表单
+        switchToLogin.addEventListener('click', () => {
+            registerForm.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+            loginTitle.textContent = '聊天室登录';
+            loginError.classList.add('hidden');
+        });
+        
+        // 注册处理
+        registerBtn.addEventListener('click', () => {
+            const username = registerUsername.value.trim();
+            const password = registerPassword.value.trim();
+            const confirmPassword = registerConfirmPassword.value.trim();
+            
+            // 表单验证
+            if (!username) {
+                registerError.textContent = '请输入用户名';
+                registerError.classList.remove('hidden');
+                return;
+            }
+            
+            if (username.length < 3) {
+                registerError.textContent = '用户名至少需要3个字符';
+                registerError.classList.remove('hidden');
+                return;
+            }
+            
+            if (!password) {
+                registerError.textContent = '请输入密码';
+                registerError.classList.remove('hidden');
+                return;
+            }
+            
+            if (password.length < 6) {
+                registerError.textContent = '密码至少需要6个字符';
+                registerError.classList.remove('hidden');
+                return;
+            }
+            
+            if (password !== confirmPassword) {
+                registerError.textContent = '两次输入的密码不一致';
+                registerError.classList.remove('hidden');
+                return;
+            }
+            
+            // 发送注册请求
+            fetch(`/register/${encodeURIComponent(username)}/${encodeURIComponent(password)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 注册成功，显示成功消息并切换到登录表单
+                        registerError.textContent = '注册成功，请登录';
+                        registerError.style.color = 'green';
+                        registerError.classList.remove('hidden');
+                        
+                        // 清空注册表单
+                        registerUsername.value = '';
+                        registerPassword.value = '';
+                        registerConfirmPassword.value = '';
+                        
+                        // 3秒后自动切换到登录页面
+                        setTimeout(() => {
+                            switchToLogin.click();
+                            loginUsername.value = username; // 填充用户名到登录表单
+                        }, 3000);
+                    } else {
+                        // 注册失败
+                        registerError.textContent = data.message || '注册失败';
+                        registerError.style.color = 'red';
+                        registerError.classList.remove('hidden');
+                    }
+                })
+                .catch(error => {
+                    console.error('注册请求失败:', error);
+                    registerError.textContent = '注册请求失败，请稍后再试';
+                    registerError.style.color = 'red';
+                    registerError.classList.remove('hidden');
                 });
         });
         
