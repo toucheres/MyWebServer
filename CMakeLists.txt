@@ -91,6 +91,11 @@ add_custom_command(TARGET chat_demo POST_BUILD
         $<TARGET_FILE_DIR:chat_demo>/index.html
 )
 
+# 添加测试程序到构建配置
+add_executable(test_parameterized_query test/test_parameterized_query.cpp)
+target_link_libraries(test_parameterized_query webserver_lib ${MYSQL_LIBRARIES})
+target_include_directories(test_parameterized_query PUBLIC header)
+
 # 添加安装目标
 install(TARGETS chat_demo
     RUNTIME DESTINATION bin

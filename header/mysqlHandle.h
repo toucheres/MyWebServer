@@ -25,6 +25,15 @@ public:
     // 执行SQL查询
     bool query(const std::string& sql);
 
+    // 参数化查询相关方法
+    bool prepareStatement(const std::string& sql);
+    bool bindParam(int paramIndex, const std::string& value);
+    bool bindParam(int paramIndex, int value);
+    bool bindParam(int paramIndex, double value);
+    bool bindParam(int paramIndex, long long value);
+    bool executeStatement();
+    void freeStatement();
+
     // 获取结果行数
     int getRowCount();
 
@@ -50,6 +59,25 @@ private:
     MYSQL* conn;
     MYSQL_RES* result;
     bool connected;
+
+    // 参数化查询相关成员
+    MYSQL_STMT* stmt;
+    MYSQL_BIND* params;
+    int paramCount;
+    std::vector<std::vector<char>> paramBuffers;
+    std::vector<unsigned long> paramLengths;
+    std::string currentSql; // 存储当前准备的SQL语句
+
+    // 结果集绑定相关（新增）
+    MYSQL_BIND* resultBinds = nullptr;
+    std::vector<std::vector<char>> resultBuffers;
+    std::vector<unsigned long> resultLengths;
+    std::vector<char> resultNulls;  // 用char代替bool，以便可以安全地获取地址
+
+    // 准备结果绑定（新增）
+    void prepareResultBindings();
+    // 释放结果绑定（新增）
+    void freeResultBindings();
 };
 
 inline void mysqlExample()

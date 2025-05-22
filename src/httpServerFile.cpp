@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <unordered_map>
 #include <sstream>
+#include <iomanip>
 
 // 初始化静态成员，自动注册HTTP协议处理函数
 bool HttpServerUtil::autoRegistered = HttpServerUtil::initialize();
@@ -13,6 +14,43 @@ bool HttpServerUtil::autoRegistered = HttpServerUtil::initialize();
 // 初始化方法，注册HTTP协议处理函数
 bool HttpServerUtil::initialize() {
     return serverFile::registerProtocolHandler(Protocol::HTTP, HttpServerUtil::httpEventloop); // 使用 Protocol 枚举
+}
+
+// 添加URL解码函数实现
+std::string HttpServerUtil::urlDecode(const std::string& encoded) 
+{
+    std::string result;
+    result.reserve(encoded.length());
+
+    for (size_t i = 0; i < encoded.length(); ++i) 
+    {
+        if (encoded[i] == '%' && i + 2 < encoded.length()) 
+        {
+            // 从十六进制字符转换为整数值
+            int value;
+            std::istringstream iss(encoded.substr(i + 1, 2));
+            if (iss >> std::hex >> value) 
+            {
+                result += static_cast<char>(value);
+                i += 2;  // 跳过已处理的两个十六进制字符
+            } 
+            else 
+            {
+                result += encoded[i];
+            }
+        } 
+        else if (encoded[i] == '+') 
+        {
+            // 将加号转换为空格
+            result += ' ';
+        } 
+        else 
+        {
+            result += encoded[i];
+        }
+    }
+
+    return result;
 }
 
 // HTTP协议的事件循环 - 静态方法
@@ -65,7 +103,11 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 if (first_space != std::string_view::npos && second_space != std::string_view::npos)
                 {
                     method = std::string(tp.substr(0, first_space));
-                    path = std::string(tp.substr(first_space + 1, second_space - first_space - 1));
+                    
+                    // 获取并解码路径
+                    std::string encodedPath = std::string(tp.substr(first_space + 1, second_space - first_space - 1));
+                    path = urlDecode(encodedPath);
+                    
                     version =
                         std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
 

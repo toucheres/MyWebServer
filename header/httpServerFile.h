@@ -57,6 +57,9 @@ class HttpServerUtil
     
     // 初始化方法，注册HTTP协议处理函数
     static bool initialize();
+    
+    // 添加URL解码函数
+    static std::string urlDecode(const std::string& encoded);
 
     // 禁止实例化
     HttpServerUtil() = delete;
