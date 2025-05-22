@@ -46,31 +46,27 @@ void handleGetHistory(serverFile& socketfile)
     if (socketfile.getAgreementType() == Protocol::HTTP)
     {
         // 使用参数化查询获取历史消息
-        if (mysqldb.prepareStatement("SELECT * FROM messages ORDER BY created_at DESC LIMIT 100"))
-        {
-            if (!mysqldb.executeStatement())
-            {
-                std::cerr << "查询历史消息失败: " << mysqldb.getLastError() << '\n';
-                socketfile.write(HttpResponse{500}.with_content("数据库查询失败"));
-                mysqldb.freeStatement();
-                return;
-            }
-            
-            std::string response = "";
-            std::vector<std::string> row;
-            while (!(row = mysqldb.fetchRow()).empty())
-            {
-                response += Message{row};
-            }
-            
-            auto httpres = HttpResponse{200}.with_content(response);
-            socketfile.write(httpres);
-            mysqldb.freeStatement();
-        }
-        else
-        {
+        auto stmt = mysqldb.prepareStatement("SELECT * FROM messages ORDER BY created_at DESC LIMIT 100");
+        if (!stmt) {
             socketfile.write(HttpResponse{500}.with_content("准备查询语句失败"));
+            return;
         }
+        
+        auto result = stmt->execute();
+        if (result->empty() && result->getAffectedRows() == 0) {
+            std::cerr << "查询历史消息失败: " << result->getLastError() << '\n';
+            socketfile.write(HttpResponse{500}.with_content("数据库查询失败"));
+            return;
+        }
+        
+        std::string response = "";
+        std::vector<std::string> row;
+        while (!(row = result->fetchRow()).empty()) {
+            response += Message{row};
+        }
+        
+        auto httpres = HttpResponse{200}.with_content(response);
+        socketfile.write(httpres);
     }
 }
 
@@ -94,8 +90,7 @@ void handleWebSocketConnect(serverFile& socketfile)
     {
         // 处理接收到的WebSocket消息
         auto messageStr = socketfile.getContent()["message"];
-        if (messageStr.empty())
-        {
+        if (messageStr.empty()) {
             return;
         }
 
@@ -103,8 +98,7 @@ void handleWebSocketConnect(serverFile& socketfile)
         Message pullMessage{messageStr};
 
         // 设置当前时间（如果消息中没有提供）
-        if (pullMessage.time == "1970-01-01 00:00::00")
-        {
+        if (pullMessage.time == "1970-01-01 00:00::00") {
             auto now = std::chrono::system_clock::now();
             auto tt = std::chrono::system_clock::to_time_t(now);
             std::tm local_tm = *std::localtime(&tt);
@@ -120,36 +114,28 @@ void handleWebSocketConnect(serverFile& socketfile)
             std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch())
                 .count();
 
-        // 使用参数化查询插入消息
-        if (mysqldb.prepareStatement("INSERT INTO messages (sender, content, timestamp) VALUES (?, ?, ?)"))
-        {
-            mysqldb.bindParam(0, pullMessage.sender);
-            mysqldb.bindParam(1, pullMessage.content);
-            mysqldb.bindParam(2, (long long)unix_timestamp);
+        // 使用参数化查询插入消息，利用链式调用
+        auto stmt = mysqldb.prepareStatement("INSERT INTO messages (sender, content, timestamp) VALUES (?, ?, ?)");
+        if (stmt) {
+            auto result = stmt->bindParam(0, pullMessage.sender)
+                               .bindParam(1, pullMessage.content)
+                               .bindParam(2, (long long)unix_timestamp)
+                               .execute();
             
-            if (!mysqldb.executeStatement())
-            {
-                std::cerr << "存储消息失败: " << mysqldb.getLastError() << '\n';
+            if (result->getAffectedRows() <= 0) {
+                std::cerr << "存储消息失败: " << result->getLastError() << '\n';
             }
-            
-            mysqldb.freeStatement();
-        }
-        else
-        {
+        } else {
             std::cerr << "准备消息插入语句失败: " << mysqldb.getLastError() << '\n';
         }
 
         // 广播消息给所有其他WebSocket连接
-        // 修复：使用全局httpServer变量而非不存在的getServer()方法
         extern HttpServer httpServer;
-        for (auto& each : httpServer.getfilemap())
-        {
+        for (auto& each : httpServer.getfilemap()) {
             auto& file = each.second;
-            if (file && file->getAgreementType() == Protocol::WebSocket)
-            {
+            if (file && file->getAgreementType() == Protocol::WebSocket) {
                 // 不给发送者自己发消息
-                if (socketfile.getSocketFile().getfd() != file->getSocketFile().getfd())
-                {
+                if (socketfile.getSocketFile().getfd() != file->getSocketFile().getfd()) {
                     file->write(std::string(WebSocketResponse::text(messageStr)));
                 }
             }
@@ -222,70 +208,62 @@ void handleLogin(serverFile& socketfile)
         auto username = std::get<std::string>((*res)[0]);
         auto password = std::get<std::string>((*res)[1]);
 
-        // 使用参数化查询查询用户
-        if (mysqldb.prepareStatement("SELECT * FROM users WHERE username = ? AND password = ?"))
-        {
-            mysqldb.bindParam(0, username);
-            mysqldb.bindParam(1, password);
-            
-            if (mysqldb.executeStatement())
-            {
-                // 检查是否有结果
-                auto row = mysqldb.fetchRow();
-                if (!row.empty())
-                {
-                    // 生成随机会话ID
-                    std::string sessionId = generateRandomSessionId();
-
-                    // 获取当前时间
-                    auto now = std::chrono::system_clock::now();
-                    auto now_time_t = std::chrono::system_clock::to_time_t(now);
-
-                    // 设置过期时间（例如，1小时后）
-                    auto expiry = now + std::chrono::hours(1);
-                    auto expiry_time_t = std::chrono::system_clock::to_time_t(expiry);
-
-                    // 格式化时间
-                    std::string currentTime = formatTime(now_time_t);
-                    std::string expiryTime = formatTime(expiry_time_t);
-
-                    // 在服务器端存储会话信息
-                    token_name[sessionId] = "username:" + username + '\n' +
-                                          "loginTime:" + currentTime + '\n' +
-                                          "expiryTime:" + expiryTime + '\n';
-
-                    // 返回带有Set-Cookie头的响应
-                    HttpResponse response{200};
-                    response.addHeader("Set-Cookie", "sessionId=" + sessionId +
-                                                    "; Path=/; HttpOnly; Max-Age=3600");
-                    response.with_content(
-                        "{\"status\":\"success\",\"message\":\"登录成功\",\"username\":\"" +
-                        username + "\"}");
-                    socketfile.write(response);
-                }
-                else
-                {
-                    // 无匹配用户
-                    HttpResponse response{401};
-                    response.with_content(
-                        "{\"status\":\"error\",\"message\":\"用户名或密码错误\"}");
-                    socketfile.write(response);
-                }
-            }
-            else
-            {
-                HttpResponse response{500};
-                response.with_content("{\"status\":\"error\",\"message\":\"数据库查询出错\"}");
-                socketfile.write(response);
-            }
-            
-            // 释放准备语句
-            mysqldb.freeStatement();
-        }
-        else
-        {
+        // 使用参数化查询查询用户，利用链式调用
+        auto stmt = mysqldb.prepareStatement("SELECT * FROM users WHERE username = ? AND password = ?");
+        if (!stmt) {
             HttpResponse response{500};
             response.with_content("{\"status\":\"error\",\"message\":\"准备查询语句失败\"}");
+            socketfile.write(response);
+            return;
+        }
+        
+        auto result = stmt->bindParam(0, username)
+                           .bindParam(1, password)
+                           .execute();
+                           
+        if (!result) {  // 检查result是否为nullptr，而不是empty()
+            HttpResponse response{500};
+            response.with_content("{\"status\":\"error\",\"message\":\"数据库查询出错\"}");
+            socketfile.write(response);
+            return;
+        }
+        
+        // 检查是否有结果
+        auto row = result->fetchRow();
+        if (!row.empty()) {
+            // 生成随机会话ID
+            std::string sessionId = generateRandomSessionId();
+
+            // 获取当前时间
+            auto now = std::chrono::system_clock::now();
+            auto now_time_t = std::chrono::system_clock::to_time_t(now);
+
+            // 设置过期时间（例如，1小时后）
+            auto expiry = now + std::chrono::hours(1);
+            auto expiry_time_t = std::chrono::system_clock::to_time_t(expiry);
+
+            // 格式化时间
+            std::string currentTime = formatTime(now_time_t);
+            std::string expiryTime = formatTime(expiry_time_t);
+
+            // 在服务器端存储会话信息
+            token_name[sessionId] = "username:" + username + '\n' +
+                                  "loginTime:" + currentTime + '\n' +
+                                  "expiryTime:" + expiryTime + '\n';
+
+            // 返回带有Set-Cookie头的响应
+            HttpResponse response{200};
+            response.addHeader("Set-Cookie", "sessionId=" + sessionId +
+                                            "; Path=/; HttpOnly; Max-Age=3600");
+            response.with_content(
+                "{\"status\":\"success\",\"message\":\"登录成功\",\"username\":\"" +
+                username + "\"}");
+            socketfile.write(response);
+        } else {
+            // 无匹配用户
+            HttpResponse response{401};
+            response.with_content(
+                "{\"status\":\"error\",\"message\":\"用户名或密码错误\"}");
             socketfile.write(response);
         }
     }
@@ -324,61 +302,54 @@ void handleRegister(serverFile& socketfile)
             return;
         }
 
-        // 检查用户名是否已存在 - 使用参数化查询
-        if (mysqldb.prepareStatement("SELECT * FROM users WHERE username = ?"))
-        {
-            mysqldb.bindParam(0, username);
-            
-            if (mysqldb.executeStatement())
-            {
-                if (!mysqldb.fetchRow().empty())
-                {
-                    // 用户名已存在
-                    HttpResponse response{409}; // Conflict
-                    response.with_content("{\"status\":\"error\",\"message\":\"用户名已存在\"}");
-                    socketfile.write(response);
-                    mysqldb.freeStatement();
-                    return;
-                }
-            }
-            else
-            {
-                HttpResponse response{500};
-                response.with_content("{\"status\":\"error\",\"message\":\"数据库查询出错\"}");
-                socketfile.write(response);
-                mysqldb.freeStatement();
-                return;
-            }
-            
-            mysqldb.freeStatement();
+        // 检查用户名是否已存在 - 使用参数化查询和链式调用
+        auto checkStmt = mysqldb.prepareStatement("SELECT * FROM users WHERE username = ?");
+        if (!checkStmt) {
+            HttpResponse response{500};
+            response.with_content("{\"status\":\"error\",\"message\":\"准备查询语句失败\"}");
+            socketfile.write(response);
+            return;
+        }
+        
+        auto checkResult = checkStmt->bindParam(0, username).execute();
+        if (!checkResult) {  // 检查checkResult是否为nullptr，而不是empty()
+            HttpResponse response{500};
+            response.with_content("{\"status\":\"error\",\"message\":\"数据库查询出错\"}");
+            socketfile.write(response);
+            return;
+        }
+        
+        // 检查是否存在匹配的用户名
+        auto row = checkResult->fetchRow();
+        if (!row.empty()) {
+            // 用户名已存在
+            HttpResponse response{409}; // Conflict
+            response.with_content("{\"status\":\"error\",\"message\":\"用户名已存在\"}");
+            socketfile.write(response);
+            return;
         }
 
-        // 插入新用户 - 使用参数化查询
-        if (mysqldb.prepareStatement("INSERT INTO users (username, password) VALUES (?, ?)"))
-        {
-            mysqldb.bindParam(0, username);
-            mysqldb.bindParam(1, password);
-            
-            if (mysqldb.executeStatement())
-            {
-                // 注册成功
-                HttpResponse response{200};
-                response.with_content("{\"status\":\"success\",\"message\":\"注册成功\"}");
-                socketfile.write(response);
-            }
-            else
-            {
-                HttpResponse response{500};
-                response.with_content("{\"status\":\"error\",\"message\":\"创建用户失败\"}");
-                socketfile.write(response);
-            }
-            
-            mysqldb.freeStatement();
-        }
-        else
-        {
+        // 插入新用户 - 使用参数化查询和链式调用
+        auto insertStmt = mysqldb.prepareStatement("INSERT INTO users (username, password) VALUES (?, ?)");
+        if (!insertStmt) {
             HttpResponse response{500};
             response.with_content("{\"status\":\"error\",\"message\":\"准备插入语句失败\"}");
+            socketfile.write(response);
+            return;
+        }
+        
+        auto insertResult = insertStmt->bindParam(0, username)
+                                     .bindParam(1, password)
+                                     .execute();
+        
+        if (insertResult->getAffectedRows() > 0) {
+            // 注册成功
+            HttpResponse response{200};
+            response.with_content("{\"status\":\"success\",\"message\":\"注册成功\"}");
+            socketfile.write(response);
+        } else {
+            HttpResponse response{500};
+            response.with_content("{\"status\":\"error\",\"message\":\"创建用户失败\"}");
             socketfile.write(response);
         }
     }
