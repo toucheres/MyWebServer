@@ -159,7 +159,7 @@ MySQLResultPtr MySQLStatement::execute()
             questionPos += paramValues[i].length();
         }
         
-        std::cerr << "执行参数化查询: " << sqlWithParams << std::endl;
+        //std::cout << "执行参数化查询: " << sqlWithParams << std::endl;
     }
 
     // 绑定参数
@@ -193,7 +193,7 @@ MySQLResultPtr MySQLStatement::execute()
     
     // 在执行语句后，检查是否有结果行
     if (mysql_stmt_field_count(stmt) > 0) {
-        std::cout << "语句执行后，有 " << mysql_stmt_num_rows(stmt) << " 行结果" << std::endl;
+        // std::cout << "语句执行后，有 " << mysql_stmt_num_rows(stmt) << " 行结果" << std::endl;
     }
 
     // 创建并返回结果对象 - 使用直接的new而不是make_shared
