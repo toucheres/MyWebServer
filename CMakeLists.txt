@@ -1,10 +1,28 @@
 cmake_minimum_required(VERSION 3.16)
 project(MyWebServer LANGUAGES CXX)
 
-# 设置C++标准
+# 设置C++标准 - yaLanTingLibs需要C++20或更高
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# 重要：设置编译器标志支持协程
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcoroutines")
+    if (CMAKE_CXX_COMPILER_VERSION MATCHES "12.*")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-maybe-uninitialized")
+    endif()
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # Clang对协程的支持
+    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+endif()
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+# 查找必要的包
+find_package(Threads REQUIRED)
+find_package(yalantinglibs REQUIRED)
 
 # 平台特定设置
 if(WIN32)
@@ -68,10 +86,14 @@ target_include_directories(webserver_lib PUBLIC
     ${OPENSSL_INCLUDE_DIR}
     ${MYSQL_INCLUDE_DIRS}
 )
+
+# 链接库 - 使用官方推荐的方式
 target_link_libraries(webserver_lib PUBLIC 
     OpenSSL::SSL 
     OpenSSL::Crypto
     ${MYSQL_LIBRARIES}
+    Threads::Threads
+    yalantinglibs::yalantinglibs  # 使用统一的yalantinglibs目标
 )
 
 # 添加demo源文件
@@ -79,22 +101,29 @@ file(GLOB DEMO_SRC demo/*.cpp)
 
 # 创建demo可执行文件
 add_executable(chat_demo ${DEMO_SRC})
-target_link_libraries(chat_demo PRIVATE webserver_lib)
-set_target_properties(chat_demo PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+target_link_libraries(chat_demo PRIVATE 
+    webserver_lib
+    # 不需要重复链接yalantinglibs，因为webserver_lib已经PUBLIC链接了
 )
 
 # 复制demo文件夹下的静态资源到输出目录
-add_custom_command(TARGET chat_demo POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/demo/index.html
-        $<TARGET_FILE_DIR:chat_demo>/index.html
-)
+if(EXISTS ${CMAKE_SOURCE_DIR}/demo/index.html)
+    add_custom_command(TARGET chat_demo POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/demo/index.html
+            $<TARGET_FILE_DIR:chat_demo>/index.html
+    )
+endif()
 
 # 添加测试程序到构建配置
-add_executable(test_parameterized_query test/test_parameterized_query.cpp)
-target_link_libraries(test_parameterized_query webserver_lib ${MYSQL_LIBRARIES})
-target_include_directories(test_parameterized_query PUBLIC header)
+if(EXISTS ${CMAKE_SOURCE_DIR}/test/test_parameterized_query.cpp)
+    add_executable(test_parameterized_query test/test_parameterized_query.cpp)
+    target_link_libraries(test_parameterized_query PRIVATE 
+        webserver_lib
+        ${MYSQL_LIBRARIES}
+    )
+    target_include_directories(test_parameterized_query PUBLIC header)
+endif()
 
 # 添加安装目标
 install(TARGETS chat_demo
@@ -119,12 +148,9 @@ message(STATUS "=== MyWebServer Build Instructions ===")
 message(STATUS "1. 创建构建目录: mkdir build && cd build")
 message(STATUS "2. 生成构建文件:")
 message(STATUS "   - Linux/macOS: cmake ..")
-message(STATUS "   - Windows: cmake ..")
 message(STATUS "3. 编译:")
-message(STATUS "   - Linux/macOS: make")
-message(STATUS "   - Windows: cmake --build . --config Release")
+message(STATUS "   - Linux/macOS: make 或 ninja")
 message(STATUS "4. 运行:")
-message(STATUS "   - Linux/macOS: ./bin/chat_demo")
-message(STATUS "   - Windows: .\\bin\\Release\\chat_demo.exe")
+message(STATUS "   - Linux/macOS: ./chat_demo")
 message(STATUS "====================================")
 message(STATUS "")
