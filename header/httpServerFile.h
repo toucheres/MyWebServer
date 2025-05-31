@@ -13,7 +13,7 @@ struct HttpResponse
     std::string reason_phrase_ = "";
     std::map<std::string, std::string> headers_;
     std::string body_;
-    bool chunked_mode_ = false; // 新增：分块传输模式标志
+    bool chunked_mode_ = false; // 分块传输模式标志
 
   public:
     HttpResponse& addHeader(std::string key, std::string val);
@@ -23,12 +23,11 @@ struct HttpResponse
     static HttpResponse formLocalFile(std::string path, std::string type);
     static HttpResponse formLocalFile(std::string path); // auto select type
     
-    // 新增：分块传输相关方法
+    // 分块传输相关方法
     HttpResponse& enableChunked();
     HttpResponse& addChunk(const std::string& chunk_data);
     HttpResponse& endChunked();
     
-    // 添加静态文件缓存
     static LocalFiles& getFileCache();
     
     inline static std::string default_servername = "co_http";
@@ -39,7 +38,6 @@ struct HttpResponse
 class HttpServerUtil
 {
   private:
-    // 添加自动注册HTTP协议处理函数的静态变量
     static bool autoRegistered;
 
   public:
@@ -49,32 +47,34 @@ class HttpServerUtil
         REQUEST_LINE,
         HEADERS,
         BODY,
-        CHUNKED_SIZE,     // 新增：解析分块大小
-        CHUNKED_DATA,     // 新增：解析分块数据
-        CHUNKED_TRAILER,  // 新增：解析分块尾部
+        CHUNKED_SIZE,     // 解析分块大小
+        CHUNKED_DATA,     // 解析分块数据
+        CHUNKED_TRAILER,  // 解析分块尾部
         COMPLETE
     };
 
-    // HTTP事件循环 - 改为静态方法
+    // HTTP事件循环
     static Task<void, void> httpEventloop(serverFile* self);
 
-    // 添加从HttpServer移动过来的HTTP协议相关函数
+    // HTTP协议相关函数
     static std::string makeHttpHead(int status, std::string_view content,
                                     std::string_view content_type = "text/plain;charset=utf-8");
-
     static std::string judge_file_type(std::string_view path);
-    
-    // 初始化方法，注册HTTP协议处理函数
     static bool initialize();
-    
-    // 添加URL解码函数
     static std::string urlDecode(const std::string& encoded);
 
-    // 添加分块传输相关的静态方法
+    // 分块传输相关的静态方法
     static std::string createChunkedResponse(const std::string& data);
     static std::string createChunkedEnd();
     static size_t parseChunkSize(const std::string& chunkSizeLine);
     
+    // 新增：客户端分块传输检测和处理
+    static bool isChunkedRequest(const std::map<std::string, std::string>& headers);
+    static std::string createChunkedRequest(const std::string& method, const std::string& path, 
+                                          const std::map<std::string, std::string>& headers = {});
+    static std::string addChunkToRequest(const std::string& chunk_data);
+    static std::string endChunkedRequest();
+
     // 禁止实例化
     HttpServerUtil() = delete;
     ~HttpServerUtil() = delete;

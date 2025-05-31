@@ -167,21 +167,17 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             if (tp == "\r\n")
             {
                 // 检查是否为分块传输
-                auto transfer_encoding_it = self->getContent().find("transfer-encoding");
-                if (transfer_encoding_it != self->getContent().end())
-                {
-                    std::string transfer_encoding = transfer_encoding_it->second;
-                    std::transform(transfer_encoding.begin(), transfer_encoding.end(), 
-                                 transfer_encoding.begin(), [](unsigned char c) { return std::tolower(c); });
-                    is_chunked = (transfer_encoding.find("chunked") != std::string::npos);
-                }
+                is_chunked = isChunkedRequest(self->getContent());
                 
-                if (method == "POST")
+                // 对于有请求体的方法（POST, PUT, PATCH等）
+                if (method == "POST" || method == "PUT" || method == "PATCH")
                 {
                     if (is_chunked)
                     {
                         state = ParseState::CHUNKED_SIZE;
                         chunked_body.clear();
+                        // 在content中标记这是分块传输
+                        self->getContent()["is_chunked"] = "true";
                     }
                     else
                     {
@@ -275,26 +271,30 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             break;
             
         case ParseState::CHUNKED_DATA:
-            if (tp.empty())
-            {
-                co_yield {};
-                continue;
-            }
+            // 对于分块数据，需要精确读取指定字节数
             if (chunk_data_read < current_chunk_size)
             {
-                size_t bytes_to_read = std::min(static_cast<size_t>(tp.length()), 
-                                              current_chunk_size - chunk_data_read);
-                chunked_body.append(tp.data(), bytes_to_read);
-                chunk_data_read += bytes_to_read;
+                size_t remaining = current_chunk_size - chunk_data_read;
+                std::string_view chunk_data = sfile.read_num(remaining);
+                
+                if (chunk_data.empty())
+                {
+                    co_yield {};
+                    continue;
+                }
+                
+                chunked_body.append(chunk_data.data(), chunk_data.size());
+                chunk_data_read += chunk_data.size();
                 
                 if (chunk_data_read >= current_chunk_size)
                 {
                     // 当前分块读取完成，读取分块后的CRLF
                     std::string_view crlf = sfile.read_line();
-                    if (!crlf.empty())
+                    if (!crlf.empty() && crlf == "\r\n")
                     {
                         state = ParseState::CHUNKED_SIZE; // 继续读取下一个分块
                     }
+                    // 如果CRLF还没完全读取，在下次循环中继续
                 }
             }
             break;
@@ -309,12 +309,27 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             {
                 // 分块传输结束
                 self->getContent().try_emplace("postcontent", chunked_body);
+                self->getContent()["chunked_complete"] = "true";
                 state = ParseState::COMPLETE;
             }
             else
             {
-                // 处理可能的尾部头部（通常忽略）
-                // 可以在这里解析额外的头部信息
+                // 处理可能的尾部头部
+                size_t index = tp.find(": ");
+                if (index != std::string_view::npos)
+                {
+                    std::string key = "trailer_" + std::string(tp.substr(0, index));
+                    std::transform(key.begin(), key.end(), key.begin(),
+                                   [](unsigned char c) { return std::tolower(c); });
+
+                    std::string val;
+                    if (index + 2 < tp.length())
+                    {
+                        size_t val_len = tp.length() - (index + 2) - 2;
+                        val = std::string(tp.substr(index + 2, val_len));
+                    }
+                    self->getContent().try_emplace(key, val);
+                }
             }
             break;
 
@@ -436,6 +451,50 @@ HttpResponse& HttpResponse::endChunked()
         body_.append(HttpServerUtil::createChunkedEnd());
     }
     return *this;
+}
+
+// 新增：检测是否为分块请求
+bool HttpServerUtil::isChunkedRequest(const std::map<std::string, std::string>& headers)
+{
+    auto it = headers.find("transfer-encoding");
+    if (it != headers.end()) {
+        std::string transfer_encoding = it->second;
+        std::transform(transfer_encoding.begin(), transfer_encoding.end(), 
+                     transfer_encoding.begin(), [](unsigned char c) { return std::tolower(c); });
+        return transfer_encoding.find("chunked") != std::string::npos;
+    }
+    return false;
+}
+
+// 新增：创建分块传输请求头
+std::string HttpServerUtil::createChunkedRequest(const std::string& method, const std::string& path, 
+                                                const std::map<std::string, std::string>& headers)
+{
+    std::ostringstream oss;
+    oss << method << " " << path << " HTTP/1.1\r\n";
+    oss << "Transfer-Encoding: chunked\r\n";
+    
+    for (const auto& header : headers) {
+        // 避免重复设置Transfer-Encoding和Content-Length
+        if (header.first != "transfer-encoding" && header.first != "content-length") {
+            oss << header.first << ": " << header.second << "\r\n";
+        }
+    }
+    
+    oss << "\r\n";
+    return oss.str();
+}
+
+// 新增：为请求添加分块数据
+std::string HttpServerUtil::addChunkToRequest(const std::string& chunk_data)
+{
+    return createChunkedResponse(chunk_data);
+}
+
+// 新增：结束分块请求
+std::string HttpServerUtil::endChunkedRequest()
+{
+    return createChunkedEnd();
 }
 
 // 实现获取文件缓存的方法
