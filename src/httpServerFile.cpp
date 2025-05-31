@@ -53,43 +53,85 @@ std::string HttpServerUtil::urlDecode(const std::string& encoded)
     return result;
 }
 
+// 添加分块传输辅助函数实现
+std::string HttpServerUtil::createChunkedResponse(const std::string& data) 
+{
+    if (data.empty()) {
+        return createChunkedEnd();
+    }
+    
+    std::ostringstream oss;
+    oss << std::hex << data.length() << "\r\n";
+    oss << data << "\r\n";
+    return oss.str();
+}
+
+std::string HttpServerUtil::createChunkedEnd() 
+{
+    return "0\r\n\r\n";
+}
+
+size_t HttpServerUtil::parseChunkSize(const std::string& chunkSizeLine) 
+{
+    size_t pos = chunkSizeLine.find(';'); // 忽略可能的chunk扩展
+    std::string sizeStr = (pos != std::string::npos) ? 
+                         chunkSizeLine.substr(0, pos) : chunkSizeLine;
+    
+    // 移除前后空白字符
+    size_t start = sizeStr.find_first_not_of(" \t");
+    size_t end = sizeStr.find_last_not_of(" \t\r\n");
+    if (start != std::string::npos && end != std::string::npos) {
+        sizeStr = sizeStr.substr(start, end - start + 1);
+    }
+    
+    try {
+        return std::stoul(sizeStr, nullptr, 16); // 十六进制解析
+    } catch (...) {
+        return 0;
+    }
+}
+
 // HTTP协议的事件循环 - 静态方法
 Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
 {
     // 解析状态相关变量
-    ParseState state = ParseState::REQUEST_LINE; // Use enum class
+    ParseState state = ParseState::REQUEST_LINE;
     std::string method;
     std::string path;
     std::string version;
     size_t content_length = 0;
     size_t body_read = 0;
     std::string body_buffer;
+    
+    // 分块传输相关变量
+    bool is_chunked = false;
+    size_t current_chunk_size = 0;
+    size_t chunk_data_read = 0;
+    std::string chunked_body;
 
-    while (self->getStatus()) // Use getStatus()
+    while (self->getStatus())
     {
-        // Access SocketFile through serverFile's getter
         SocketFile& sfile = self->getSocketFile();
         EventStatus socketEventStatus = sfile.eventGo();
 
         if (socketEventStatus == EventStatus::Stop)
         {
-            self->setFileState(false); // Update serverFile's state
+            self->setFileState(false);
             co_yield {};
-            continue; // Skip further processing if socket stopped
+            continue;
         }
         
-        // Check status via SocketFile's getter
         if (sfile.getSocketStatus() == SocketStatus::WRONG)
         {
-            self->setFileState(false); // Update serverFile's state
+            self->setFileState(false);
             co_yield {};
-            continue; // Skip further processing
+            continue;
         }
 
-        std::string_view tp = sfile.read_line(); // Use sfile
+        std::string_view tp = sfile.read_line();
         switch (state)
         {
-        case ParseState::REQUEST_LINE: // Use enum class
+        case ParseState::REQUEST_LINE:
             if (tp.empty())
             {
                 co_yield {};
@@ -103,24 +145,20 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 if (first_space != std::string_view::npos && second_space != std::string_view::npos)
                 {
                     method = std::string(tp.substr(0, first_space));
-                    
-                    // 获取并解码路径
                     std::string encodedPath = std::string(tp.substr(first_space + 1, second_space - first_space - 1));
                     path = urlDecode(encodedPath);
-                    
-                    version =
-                        std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
+                    version = std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
 
                     self->getContent()["method"] = method;
                     self->getContent()["path"] = path;
                     self->getContent()["version"] = version;
 
-                    state = ParseState::HEADERS; // Use enum class
+                    state = ParseState::HEADERS;
                 }
             }
             break;
 
-        case ParseState::HEADERS: // Use enum class
+        case ParseState::HEADERS:
             if (tp.empty())
             {
                 co_yield {};
@@ -128,30 +166,48 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             }
             if (tp == "\r\n")
             {
+                // 检查是否为分块传输
+                auto transfer_encoding_it = self->getContent().find("transfer-encoding");
+                if (transfer_encoding_it != self->getContent().end())
+                {
+                    std::string transfer_encoding = transfer_encoding_it->second;
+                    std::transform(transfer_encoding.begin(), transfer_encoding.end(), 
+                                 transfer_encoding.begin(), [](unsigned char c) { return std::tolower(c); });
+                    is_chunked = (transfer_encoding.find("chunked") != std::string::npos);
+                }
+                
                 if (method == "POST")
                 {
-                    auto it = self->getContent().find("content-length");
-                    if (it != self->getContent().end())
+                    if (is_chunked)
                     {
-                        try
-                        {
-                            content_length = std::stoul(std::string(it->second));
-                            state = ParseState::BODY; // Use enum class
-                        }
-                        catch (...)
-                        {
-                            content_length = 0;
-                            state = ParseState::COMPLETE; // Use enum class
-                        }
+                        state = ParseState::CHUNKED_SIZE;
+                        chunked_body.clear();
                     }
                     else
                     {
-                        state = ParseState::COMPLETE; // Use enum class
+                        auto it = self->getContent().find("content-length");
+                        if (it != self->getContent().end())
+                        {
+                            try
+                            {
+                                content_length = std::stoul(std::string(it->second));
+                                state = ParseState::BODY;
+                            }
+                            catch (...)
+                            {
+                                content_length = 0;
+                                state = ParseState::COMPLETE;
+                            }
+                        }
+                        else
+                        {
+                            state = ParseState::COMPLETE;
+                        }
                     }
                 }
                 else
                 {
-                    state = ParseState::COMPLETE; // Use enum class
+                    state = ParseState::COMPLETE;
                 }
             }
             else
@@ -175,7 +231,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             }
             break;
 
-        case ParseState::BODY: // Use enum class
+        case ParseState::BODY:
             if (tp.empty())
             {
                 co_yield {};
@@ -189,25 +245,93 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 if (body_read >= content_length)
                 {
                     self->getContent().try_emplace("postcontent", body_buffer);
-                    state = ParseState::COMPLETE; // Use enum class
+                    state = ParseState::COMPLETE;
                 }
             }
             break;
+            
+        case ParseState::CHUNKED_SIZE:
+            if (tp.empty())
+            {
+                co_yield {};
+                continue;
+            }
+            if (!tp.empty())
+            {
+                std::string chunk_size_line(tp.data(), tp.length());
+                current_chunk_size = parseChunkSize(chunk_size_line);
+                chunk_data_read = 0;
+                
+                if (current_chunk_size == 0)
+                {
+                    // 最后一个分块，进入尾部解析状态
+                    state = ParseState::CHUNKED_TRAILER;
+                }
+                else
+                {
+                    state = ParseState::CHUNKED_DATA;
+                }
+            }
+            break;
+            
+        case ParseState::CHUNKED_DATA:
+            if (tp.empty())
+            {
+                co_yield {};
+                continue;
+            }
+            if (chunk_data_read < current_chunk_size)
+            {
+                size_t bytes_to_read = std::min(static_cast<size_t>(tp.length()), 
+                                              current_chunk_size - chunk_data_read);
+                chunked_body.append(tp.data(), bytes_to_read);
+                chunk_data_read += bytes_to_read;
+                
+                if (chunk_data_read >= current_chunk_size)
+                {
+                    // 当前分块读取完成，读取分块后的CRLF
+                    std::string_view crlf = sfile.read_line();
+                    if (!crlf.empty())
+                    {
+                        state = ParseState::CHUNKED_SIZE; // 继续读取下一个分块
+                    }
+                }
+            }
+            break;
+            
+        case ParseState::CHUNKED_TRAILER:
+            if (tp.empty())
+            {
+                co_yield {};
+                continue;
+            }
+            if (tp == "\r\n")
+            {
+                // 分块传输结束
+                self->getContent().try_emplace("postcontent", chunked_body);
+                state = ParseState::COMPLETE;
+            }
+            else
+            {
+                // 处理可能的尾部头部（通常忽略）
+                // 可以在这里解析额外的头部信息
+            }
+            break;
 
-        case ParseState::COMPLETE: // Use enum class
+        case ParseState::COMPLETE:
         {
-            if (sfile.getSocketStatus() != SocketStatus::WRONG) // Check sfile status
+            if (sfile.getSocketStatus() != SocketStatus::WRONG)
             {
                 self->handle();
                 
-                // 只重置必要的状态变量
-                state = ParseState::REQUEST_LINE; // Use enum class
-                // method.clear();
-                // path.clear();
-                // version.clear();
+                // 重置状态变量
+                state = ParseState::REQUEST_LINE;
                 content_length = 0;
                 body_read = 0;
-                // body_buffer.clear();
+                is_chunked = false;
+                current_chunk_size = 0;
+                chunk_data_read = 0;
+                chunked_body.clear();
             }
         }
         break;
@@ -288,6 +412,32 @@ HttpResponse& HttpResponse::with_content(std::string new_content, std::string ty
     return *this;
 }
 
+HttpResponse& HttpResponse::enableChunked()
+{
+    chunked_mode_ = true;
+    headers_["Transfer-Encoding"] = "chunked";
+    headers_.erase("Content-Length"); // 分块传输时不使用Content-Length
+    return *this;
+}
+
+HttpResponse& HttpResponse::addChunk(const std::string& chunk_data)
+{
+    if (chunked_mode_) {
+        body_.append(HttpServerUtil::createChunkedResponse(chunk_data));
+    } else {
+        body_.append(chunk_data);
+    }
+    return *this;
+}
+
+HttpResponse& HttpResponse::endChunked()
+{
+    if (chunked_mode_) {
+        body_.append(HttpServerUtil::createChunkedEnd());
+    }
+    return *this;
+}
+
 // 实现获取文件缓存的方法
 LocalFiles& HttpResponse::getFileCache() {
     static LocalFiles fileCache;
@@ -331,6 +481,12 @@ HttpResponse::operator std::string()
 {
     std::ostringstream oss;
     oss << http_version_ << " " << status_code_ << " " << reason_phrase_ << "\r\n";
+    
+    // 如果不是分块模式且没有设置Content-Length，自动设置
+    if (!chunked_mode_ && headers_.find("Content-Length") == headers_.end()) {
+        headers_["Content-Length"] = std::to_string(body_.length());
+    }
+    
     for (const auto& header : headers_) {
         oss << header.first << ": " << header.second << "\r\n";
     }
