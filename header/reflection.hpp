@@ -87,16 +87,40 @@ auto visit_members(auto&& bevisited, auto&& visitor)
     constexpr int member_count = num_of_number_v<std::decay_t<decltype(bevisited)>>;
     visit_members_impl<member_count>(bevisited, visitor);
 }
-template<int* p>
-class getname
+template <class T> class getname
 {
-  public:
-    void test()
+    static constexpr T t{};
+
+    template <class B, class mem, mem B::* memptr> static consteval const char* getname_()
     {
         auto imf = std::source_location::current();
-        std::cout << imf.column() << '\n';
-        std::cout << imf.file_name() << '\n';
-        std::cout << imf.function_name() << '\n';
-        std::cout << imf.line() << '\n';
+        return imf.function_name();
     }
+
+    template <std::size_t I> static consteval const char* get_member_name()
+    {
+        if constexpr (I == 0 && num_of_number_v<T> >= 1)
+        {
+            if constexpr (num_of_number_v<T> == 1)
+            {
+                auto&& [a1] = t;
+                return getname_<T, std::decay_t<decltype(a1)>, &T::age>();
+            }
+            else if constexpr (num_of_number_v<T> >= 2)
+            {
+                auto&& [a1, a2] = t;
+                return getname_<T, std::decay_t<decltype(a1)>, &T::age>();
+            }
+        }
+        else if constexpr (I == 1 && num_of_number_v<T> >= 2)
+        {
+            auto&& [a1, a2] = t;
+            return getname_<T, std::decay_t<decltype(a2)>, &T::name>();
+        }
+        return "unknown";
+    }
+
+  public:
+    inline constexpr static const char* value[num_of_number_v<T>] = {get_member_name<0>(),
+                                                                     get_member_name<1>()};
 };
