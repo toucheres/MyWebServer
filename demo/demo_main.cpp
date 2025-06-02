@@ -1,53 +1,47 @@
-#include "corutine.hpp"
-#include "demo_db.h"
-#include "demo_routes.h"
 #include "http.h"
-#include <file.h>
-#include <iostream>
-#include <ostream>
-#include <ylt/struct_json/json_reader.h>
-#include <ylt/struct_json/json_writer.h>
-// 全局变量
+#include "mysqlHandle.h"
+#include "ylt/struct_json/json_reader.h"
+#include "ylt/struct_json/json_writer.h"
+#include "ylt/struct_pb.hpp"
+#include "ylt/struct_xml/xml_reader.h"
+#include "ylt/struct_xml/xml_writer.h"
+#include "ylt/struct_yaml/yaml_reader.h"
+#include "ylt/struct_yaml/yaml_writer.h"
 HttpServer httpServer;
 MySQLHandle mysqldb;
+struct simple
+{
+    int color;
+    int id;
+    std::string str;
+    int age;
+};
 
 int main()
 {
-    LocalFiles static_files;
-    // 移除对未知类型"control"的使用
-    auto& coManagerInstance = Co_Start_Manager::getInstance();
+    simple p{.color = 2, .id = 10, .str = "hello reflection", .age = 6};
 
-    // 在程序启动后连接数据库
-    if (!mysqldb.connect("localhost", "webserver", "WebServer@2025", "chat_db", 3306))
-    {
-        std::cerr << "数据库连接失败: " << mysqldb.getLastError() << std::endl;
-        return 1;
-    }
-    else
-    {
-        std::cout << "数据库连接成功!" << std::endl;
-    }
+    std::string json;
+    struct_json::to_json(p, json);
+    std::cout<<json<<std::endl;
+    std::string xml;
+    struct_xml::to_xml(p, xml);
+    std::cout << xml << std::endl;
 
-    // 初始化数据库
-    if (!initializeDatabase(mysqldb))
-    {
-        std::cerr << "数据库初始化失败!" << std::endl;
-        return 1;
-    }
+    std::string yaml;
+    struct_yaml::to_yaml(p, yaml);
+    std::cout << yaml << std::endl;
 
-    // 添加默认用户
-    addDefaultUser(mysqldb);
+    std::string protobuf;
+    struct_pb::to_pb(p, protobuf);
+    std::cout << protobuf << std::endl;
 
-    // 注册所有路由
-    registerAllRoutes(httpServer);
-
-    // 启动服务器
-    coManagerInstance.getManager().add(httpServer);
-    // 移除对未知类
-    coManagerInstance.setLoopInterval(std::chrono::nanoseconds(0));
-
-    std::cout << "服务器已启动，监听端口: 8080" << std::endl;
-    coManagerInstance.start();
-
-    return 0;
+    simple p1;
+    simple p2;
+    simple p3;
+    simple p4;
+    struct_json::from_json(p1, json);
+    struct_xml::from_xml(p2, xml);
+    struct_yaml::from_yaml(p3, yaml);
+    struct_pb::from_pb(p4, protobuf);
 }
