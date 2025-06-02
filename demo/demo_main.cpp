@@ -1,47 +1,26 @@
 #include "http.h"
 #include "mysqlHandle.h"
-#include "ylt/struct_json/json_reader.h"
-#include "ylt/struct_json/json_writer.h"
-#include "ylt/struct_pb.hpp"
-#include "ylt/struct_xml/xml_reader.h"
-#include "ylt/struct_xml/xml_writer.h"
-#include "ylt/struct_yaml/yaml_reader.h"
-#include "ylt/struct_yaml/yaml_writer.h"
-HttpServer httpServer;
+#include "reflection.hpp"
 MySQLHandle mysqldb;
-struct simple
-{
-    int color;
-    int id;
-    std::string str;
-    int age;
-};
-
+HttpServer httpServer;
 int main()
 {
-    simple p{.color = 2, .id = 10, .str = "hello reflection", .age = 6};
+    person{10, "test"};
+    // person{AnyType{}, AnyType{}};
 
-    std::string json;
-    struct_json::to_json(p, json);
-    std::cout<<json<<std::endl;
-    std::string xml;
-    struct_xml::to_xml(p, xml);
-    std::cout << xml << std::endl;
+    num_of_number_v<person>;
+    is_same_all_v<AnyType, AnyType, AnyType>;
 
-    std::string yaml;
-    struct_yaml::to_yaml(p, yaml);
-    std::cout << yaml << std::endl;
-
-    std::string protobuf;
-    struct_pb::to_pb(p, protobuf);
-    std::cout << protobuf << std::endl;
-
-    simple p1;
-    simple p2;
-    simple p3;
-    simple p4;
-    struct_json::from_json(p1, json);
-    struct_xml::from_xml(p2, xml);
-    struct_yaml::from_yaml(p3, yaml);
-    struct_pb::from_pb(p4, protobuf);
+    auto lam = [](auto&&... arg) { (std::cout << ... << arg) << '\n'; };
+    auto per = person{12, "testname"};
+    visit_members(per, lam);
+    num_of_number<person>::value;
+    is_same_all<AnyType, AnyType, AnyType>::value;
+    static int b = 0;
+    auto a = getname<&b>{};
+    // gcc 13.3.0:
+    // void getname<p>::test() [with int* p = (& b)]
+    // clang 18.1.3:
+    // void getname<&b>::test() [p = &b]
+    a.test();
 }

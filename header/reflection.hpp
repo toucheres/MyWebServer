@@ -1,5 +1,8 @@
+#include <iostream>
+#include <source_location>
 #include <string>
 #include <type_traits>
+
 class AnyType
 {
   public:
@@ -20,41 +23,80 @@ template <class T1, class T2> class is_same_all<T1, T2>
     constexpr static bool value = std::is_same_v<T1, T2>;
 };
 
-template <class Type, int MAXNUM = 32> class num_of_number
+// 变量模板简化
+template <class T1, class T2, class... Ts>
+inline constexpr bool is_same_all_v = is_same_all<T1, T2, Ts...>::value;
+
+template <class Type> class num_of_number
 {
-    template <class T, class... Args, int num = 0>
+    template <class T, class... Args>
     static consteval int num_of_number_fun_()
-        requires requires { is_same_all<AnyType, Args...>::value; }
+        requires requires { is_same_all_v<AnyType, Args...> || sizeof...(Args) == 0; }
     {
         if constexpr (requires { T{std::declval<Args>()...}; })
         {
-            if constexpr (requires { num_of_number_fun_<T, AnyType, Args..., num + 1>() >= 0; })
-            {
-                return num_of_number_fun_<T, AnyType, Args..., num + 1>();
-            }
+            return num_of_number_fun_<T, AnyType, Args...>();
         }
         else
         {
-            return num - 1;
+            return sizeof...(Args) - 1;
         }
     }
     template <class T_> static consteval int num_of_number_fun_start()
     {
-        return num_of_number::num_of_number_fun_<T_>();
+        return num_of_number_fun_<T_, AnyType>();
     };
 
   public:
-    static constexpr int value = num_of_number_fun_start<Type>();
+    static constexpr int value = num_of_number_fun_start<std::decay_t<Type>>();
 };
+
+// 变量模板简化
+template <class Type> inline constexpr int num_of_number_v = num_of_number<Type>::value;
+
 struct person
 {
     int age;
     std::string name;
 };
-void testfun()
+template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& visitor)
 {
-    person{10, "test"};
-    person{AnyType{}, AnyType{}};
-    num_of_number<person>::value;
-    is_same_all<AnyType, AnyType, AnyType>::value;
+    if constexpr (N == 0)
+    {
+        // 无成员
+    }
+    else if constexpr (N == 1)
+    {
+        auto&& [a1] = bevisited;
+        visitor(a1);
+    }
+    else if constexpr (N == 2)
+    {
+        auto&& [a1, a2] = bevisited;
+        visitor(a1, a2);
+    }
+    else if constexpr (N == 3)
+    {
+        auto&& [a1, a2, a3] = bevisited;
+        visitor(a1, a2, a3);
+    }
 }
+
+auto visit_members(auto&& bevisited, auto&& visitor)
+{
+    constexpr int member_count = num_of_number_v<std::decay_t<decltype(bevisited)>>;
+    visit_members_impl<member_count>(bevisited, visitor);
+}
+template<int* p>
+class getname
+{
+  public:
+    void test()
+    {
+        auto imf = std::source_location::current();
+        std::cout << imf.column() << '\n';
+        std::cout << imf.file_name() << '\n';
+        std::cout << imf.function_name() << '\n';
+        std::cout << imf.line() << '\n';
+    }
+};
