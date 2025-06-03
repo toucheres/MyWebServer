@@ -86,35 +86,36 @@ template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& v
 }
 void visit_members_each_with_index(auto&& bevisited, auto&& visitor)
 {
-    constexpr int N = num_of_number_v<std::decay_t<decltype(bevisited)>>;
+    using T = std::decay_t<decltype(bevisited)>;
+    constexpr int N = num_of_number_v<T>;
     if constexpr (N == 0)
     {
     }
     else if constexpr (N == 1)
     {
         auto&& [a1] = bevisited;
-        visitor.template operator()<std::decay_t<decltype(a1)>, 0>(a1);
+        visitor.template operator()<T, std::decay_t<decltype(a1)>, 0>(a1);
     }
     else if constexpr (N == 2)
     {
         auto&& [a1, a2] = bevisited;
-        visitor.template operator()<std::decay_t<decltype(a1)>, 0>(a1);
-        visitor.template operator()<std::decay_t<decltype(a2)>, 1>(a2);
+        visitor.template operator()<T, std::decay_t<decltype(a1)>, 0>(a1);
+        visitor.template operator()<T, std::decay_t<decltype(a2)>, 1>(a2);
     }
     else if constexpr (N == 3)
     {
         auto&& [a1, a2, a3] = bevisited;
-        visitor.template operator()<std::decay_t<decltype(a1)>, 0>(a1);
-        visitor.template operator()<std::decay_t<decltype(a2)>, 1>(a2);
-        visitor.template operator()<std::decay_t<decltype(a3)>, 2>(a3);
+        visitor.template operator()<T, std::decay_t<decltype(a1)>, 0>(a1);
+        visitor.template operator()<T, std::decay_t<decltype(a2)>, 1>(a2);
+        visitor.template operator()<T, std::decay_t<decltype(a3)>, 2>(a3);
     }
     else if constexpr (N == 4)
     {
         auto&& [a1, a2, a3, a4] = bevisited;
-        visitor.template operator()<std::decay_t<decltype(a1)>, 0>(a1);
-        visitor.template operator()<std::decay_t<decltype(a2)>, 1>(a2);
-        visitor.template operator()<std::decay_t<decltype(a3)>, 2>(a3);
-        visitor.template operator()<std::decay_t<decltype(a4)>, 3>(a4);
+        visitor.template operator()<T, std::decay_t<decltype(a1)>, 0>(a1);
+        visitor.template operator()<T, std::decay_t<decltype(a2)>, 1>(a2);
+        visitor.template operator()<T, std::decay_t<decltype(a3)>, 2>(a3);
+        visitor.template operator()<T, std::decay_t<decltype(a4)>, 3>(a4);
     }
 }
 auto visit_members(auto&& bevisited, auto&& visitor)

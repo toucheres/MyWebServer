@@ -7,10 +7,10 @@ MySQLHandle mysqldb;
 HttpServer httpServer;
 int main()
 {
-    auto lam = []<class mem, int index>(auto&& arg)
+    auto lam = []<class T, class mem, int index>(auto&& arg)
     {
-        std::cout << "index: " << index << " " << struct_bias<mem, index>() << "content: " << arg
+        std::cout << "index: " << index << " bias: "<< struct_bias<T, index>() << " content: " << arg
                   << std::endl;
     };
-    visit_members_each_with_index(person{}, lam);
+    visit_members_each_with_index(person{1,"123",1,0}, lam);
 }
