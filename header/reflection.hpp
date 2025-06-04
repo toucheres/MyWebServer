@@ -1,10 +1,10 @@
 #pragma once
+#include "reflection_macros.hpp"
 #include <array>
 #include <source_location>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
-#include "reflection_macros.hpp"
 class AnyType
 {
   public:
@@ -30,8 +30,22 @@ inline constexpr bool is_same_all_v = is_same_all<T1, T2, Ts...>::value;
 
 template <typename T>
 concept Aggregate = std::is_aggregate_v<T>;
+template <typename T>
+concept MeaningfulAggregate =
+    std::is_aggregate_v<T> &&
+    !std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, std::string> &&
+    !std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, std::string_view> &&
+    !std::is_array_v<T>;
 
-template <Aggregate Type> class num_of_number
+// Primary template
+template <typename Type> class num_of_number
+{
+  public:
+    static constexpr int value = 1;
+};
+
+// Specialization for MeaningfulAggregate
+template <MeaningfulAggregate Type> class num_of_number<Type>
 {
     template <class T, class... Args>
     static consteval int num_of_number_fun_()
@@ -54,16 +68,14 @@ template <Aggregate Type> class num_of_number
   public:
     static constexpr int value = num_of_number_fun_start<std::decay_t<Type>>();
 };
+template <typename Type> inline constexpr int num_of_number_v = num_of_number<Type>::value;
 
-// 变量模板简化
-template <Aggregate Type> inline constexpr int num_of_number_v = num_of_number<Type>::value;
+// 变量模板简化 - removed duplicate declaration with different constraint
 
 template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& visitor)
 {
     // 辅助函数，用于处理解构后的成员变量
-    auto visit_helper = [&visitor](auto&&... args) {
-        (visitor(args), ...);
-    };
+    auto visit_helper = [&visitor](auto&&... args) { (visitor(args), ...); };
     GENERATE_VISIT_CASES(32) // 支持最多5个成员，可根据需要调整
 }
 
@@ -76,7 +88,8 @@ void visit_each_member(auto&& bevisited, auto&& visitor)
     using T = std::decay_t<decltype(bevisited)>;
     constexpr int N = num_of_number_v<T>;
     // 通用的辅助函数，用于处理不同数量的成员
-    auto visit_helper = [&]<typename... Args>(Args&&... args) {
+    auto visit_helper = [&]<typename... Args>(Args&&... args)
+    {
         [&]<std::size_t... I>(std::index_sequence<I...>)
         {
             // 使用折叠表达式展开对每个成员的访问
@@ -95,11 +108,11 @@ auto visit_members(auto&& bevisited, auto&& visitor)
 template <Aggregate T> constexpr auto make_static_memberptr_tuple_form_type()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
-    
+
     GENERATE_TUPLE_CASES(32) // 支持最多5个成员，可根据需要调整
-    
+
     // 默认情况（理论上不会到达这里）
-    //return std::tuple<>{};
+    // return std::tuple<>{};
 }
 
 constexpr long long distance_var(const auto& mem1, const auto& mem2)
@@ -107,8 +120,7 @@ constexpr long long distance_var(const auto& mem1, const auto& mem2)
     return reinterpret_cast<long long>(&mem1) - reinterpret_cast<long long>(&mem2);
 }
 
-template <Aggregate T, int index>
-constexpr bool index_in_range_v = (num_of_number_v<T> > index);
+template <Aggregate T, int index> constexpr bool index_in_range_v = (num_of_number_v<T> > index);
 
 template <Aggregate T, int index>
 constexpr long long bias_member()
@@ -180,6 +192,21 @@ inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_nam
             getname_from_funname(std::get<I>(names_in_fun))...};
     }(std::make_index_sequence<num_of_number_v<T>>{});
 }
+template <int N> class INT
+{
+  public:
+    static constexpr int value = N;
+};
+
+template <Aggregate Type> class num_of_number_with_inner
+{
+public:
+    constexpr static Type instance{};
+    inline static int count = visit_members(
+        instance, [](auto... members)
+        { (num_of_number_with_inner<Type>::count += ... += num_of_number_v<decltype(members)>); });
+};
+
 #define constexpr_try(x)                                                                           \
     if constexpr (requires { x })                                                                  \
     {                                                                                              \
