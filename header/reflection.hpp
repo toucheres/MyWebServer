@@ -87,43 +87,11 @@ auto visit_members(auto&& bevisited, auto&& visitor)
 template <class T> constexpr auto make_static_memberptr_tuple_form_type()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
-
-    // 使用 if constexpr 确保每个分支都有明确的返回类型
-    if constexpr (Count == 1)
-    {
-        static constexpr T obj{};
-        auto&& [a1] = obj;
-        return std::make_tuple(&a1);
-    }
-    else if constexpr (Count == 2)
-    {
-        static constexpr T obj{};
-        auto&& [a1, a2] = obj;
-        return std::make_tuple(&a1, &a2);
-    }
-    else if constexpr (Count == 3)
-    {
-        static constexpr T obj{};
-        auto&& [a1, a2, a3] = obj;
-        return std::make_tuple(&a1, &a2, &a3);
-    }
-    else if constexpr (Count == 4)
-    {
-        static constexpr T obj{};
-        auto&& [a1, a2, a3, a4] = obj;
-        return std::make_tuple(&a1, &a2, &a3, &a4);
-    }
-    else if constexpr (Count == 5)
-    {
-        static constexpr T obj{};
-        auto&& [a1, a2, a3, a4, a5] = obj;
-        return std::make_tuple(&a1, &a2, &a3, &a4, &a5);
-    }
-    else
-    {
-        // 所有其他情况（包括Count == 0）都返回空tuple
-        return std::tuple<>{};
-    }
+    
+    GENERATE_TUPLE_CASES(5) // 支持最多5个成员，可根据需要调整
+    
+    // 默认情况（理论上不会到达这里）
+    return std::tuple<>{};
 }
 
 constexpr long long distance_var(const auto& mem1, const auto& mem2)
