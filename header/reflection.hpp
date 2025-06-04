@@ -1,3 +1,4 @@
+#pragma once
 #include <array>
 #include <source_location>
 #include <string_view>
@@ -27,7 +28,10 @@ template <class T1, class T2> class is_same_all<T1, T2>
 template <class T1, class T2, class... Ts>
 inline constexpr bool is_same_all_v = is_same_all<T1, T2, Ts...>::value;
 
-template <class Type> class num_of_number
+template <typename T>
+concept Aggregate = std::is_aggregate_v<T>;
+
+template <Aggregate Type> class num_of_number
 {
     template <class T, class... Args>
     static consteval int num_of_number_fun_()
@@ -52,7 +56,7 @@ template <class Type> class num_of_number
 };
 
 // 变量模板简化
-template <class Type> inline constexpr int num_of_number_v = num_of_number<Type>::value;
+template <Aggregate Type> inline constexpr int num_of_number_v = num_of_number<Type>::value;
 
 template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& visitor)
 {
@@ -60,10 +64,14 @@ template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& v
     auto visit_helper = [&visitor](auto&&... args) {
         (visitor(args), ...);
     };
-    GENERATE_VISIT_CASES(5) // 支持最多5个成员，可根据需要调整
+    GENERATE_VISIT_CASES(32) // 支持最多5个成员，可根据需要调整
 }
 
 void visit_each_member(auto&& bevisited, auto&& visitor)
+    requires requires(decltype(visitor) v, std::decay_t<decltype(bevisited)> t) {
+        typename std::decay_t<decltype(bevisited)>;
+        { v.template operator()<std::decay_t<decltype(bevisited)>, 0>(std::declval<int>()) };
+    }
 {
     using T = std::decay_t<decltype(bevisited)>;
     constexpr int N = num_of_number_v<T>;
@@ -76,7 +84,7 @@ void visit_each_member(auto&& bevisited, auto&& visitor)
         }(std::make_index_sequence<N>{});
     };
 
-    GENERATE_VISIT_CASES(5) // 支持最多5个成员，可根据需要调整
+    GENERATE_VISIT_CASES(32) // 支持最多5个成员，可根据需要调整
 }
 auto visit_members(auto&& bevisited, auto&& visitor)
 {
@@ -84,14 +92,14 @@ auto visit_members(auto&& bevisited, auto&& visitor)
     visit_members_impl<member_count>(bevisited, visitor);
 }
 
-template <class T> constexpr auto make_static_memberptr_tuple_form_type()
+template <Aggregate T> constexpr auto make_static_memberptr_tuple_form_type()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
     
-    GENERATE_TUPLE_CASES(5) // 支持最多5个成员，可根据需要调整
+    GENERATE_TUPLE_CASES(32) // 支持最多5个成员，可根据需要调整
     
     // 默认情况（理论上不会到达这里）
-    return std::tuple<>{};
+    //return std::tuple<>{};
 }
 
 constexpr long long distance_var(const auto& mem1, const auto& mem2)
@@ -99,12 +107,12 @@ constexpr long long distance_var(const auto& mem1, const auto& mem2)
     return reinterpret_cast<long long>(&mem1) - reinterpret_cast<long long>(&mem2);
 }
 
-template <class T, int index>
-concept index_in_range = (num_of_number_v<T>) > (index);
+template <Aggregate T, int index>
+constexpr bool index_in_range_v = (num_of_number_v<T> > index);
 
-template <class T, int index>
+template <Aggregate T, int index>
 constexpr long long bias_member()
-    requires index_in_range<T, index>
+    requires index_in_range_v<T, index>
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
 
@@ -129,7 +137,7 @@ template <auto ptr> inline constexpr std::string_view funname()
     return std::source_location::current().function_name();
 }
 
-template <class T>
+template <Aggregate T>
 inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_in_fun_names()
 {
     static constexpr auto pt = make_static_memberptr_tuple_form_type<T>();
@@ -162,7 +170,7 @@ inline constexpr std::string_view getname_from_funname(std::string_view in)
     return in.substr(start, end - start);
 }
 
-template <class T>
+template <Aggregate T>
 inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_names()
 {
     static constexpr auto names_in_fun = get_member_in_fun_names<T>();
@@ -172,3 +180,9 @@ inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_nam
             getname_from_funname(std::get<I>(names_in_fun))...};
     }(std::make_index_sequence<num_of_number_v<T>>{});
 }
+#define constexpr_try(x)                                                                           \
+    if constexpr (requires { x })                                                                  \
+    {                                                                                              \
+        x                                                                                          \
+    }
+#define constexpr_catch else
