@@ -1,10 +1,9 @@
 #include <array>
 #include <iostream>
 #include <source_location>
-#include <string>
 #include <string_view>
 #include <type_traits>
-
+#include "reflection_macros.hpp"
 class AnyType
 {
   public:
@@ -57,62 +56,27 @@ template <class Type> inline constexpr int num_of_number_v = num_of_number<Type>
 
 template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& visitor)
 {
-    if constexpr (N == 0)
-    {
-        // 无成员
-    }
-    else if constexpr (N == 1)
-    {
-        auto&& [a1] = bevisited;
-        visitor(a1);
-    }
-    else if constexpr (N == 2)
-    {
-        auto&& [a1, a2] = bevisited;
-        visitor(a1, a2);
-    }
-    else if constexpr (N == 3)
-    {
-        auto&& [a1, a2, a3] = bevisited;
-        visitor(a1, a2, a3);
-    }
-    // ...
+    // 辅助函数，用于处理解构后的成员变量
+    auto visit_helper = [&visitor](auto&&... args) {
+        (visitor(args), ...);
+    };
+    GENERATE_VISIT_CASES(5) // 支持最多5个成员，可根据需要调整
 }
 
 void visit_each_member(auto&& bevisited, auto&& visitor)
 {
     using T = std::decay_t<decltype(bevisited)>;
     constexpr int N = num_of_number_v<T>;
-    if constexpr (N == 0)
-    {
-    }
-    else if constexpr (N == 1)
-    {
-        auto&& [a1] = bevisited;
-        visitor.template operator()<T, 0>(a1);
-    }
-    else if constexpr (N == 2)
-    {
-        auto&& [a1, a2] = bevisited;
-        visitor.template operator()<T, 0>(a1);
-        visitor.template operator()<T, 1>(a2);
-    }
-    else if constexpr (N == 3)
-    {
-        auto&& [a1, a2, a3] = bevisited;
-        visitor.template operator()<T, 0>(a1);
-        visitor.template operator()<T, 1>(a2);
-        visitor.template operator()<T, 2>(a3);
-    }
-    else if constexpr (N == 4)
-    {
-        auto&& [a1, a2, a3, a4] = bevisited;
-        visitor.template operator()<T, 0>(a1);
-        visitor.template operator()<T, 1>(a2);
-        visitor.template operator()<T, 2>(a3);
-        visitor.template operator()<T, 3>(a4);
-    }
-    // ...
+    // 通用的辅助函数，用于处理不同数量的成员
+    auto visit_helper = [&]<typename... Args>(Args&&... args) {
+        [&]<std::size_t... I>(std::index_sequence<I...>)
+        {
+            // 使用折叠表达式展开对每个成员的访问
+            (visitor.template operator()<T, I>(std::get<I>(std::forward_as_tuple(args...))), ...);
+        }(std::make_index_sequence<N>{});
+    };
+
+    GENERATE_VISIT_CASES(5) // 支持最多5个成员，可根据需要调整
 }
 auto visit_members(auto&& bevisited, auto&& visitor)
 {
@@ -187,8 +151,9 @@ constexpr long long bias_member()
         constexpr auto member_ptrs = make_static_memberptr_tuple_form_type<T>();
         //[TODO] 强制类型转化破坏constexpr性
         // 直接使用 std::get 获取对应成员的指针，然后计算偏移
-        return reinterpret_cast<long long>(reinterpret_cast<long long>(std::get<index>(member_ptrs)) -
-                                           reinterpret_cast<long long>(std::get<0>(member_ptrs)));
+        return reinterpret_cast<long long>(
+            reinterpret_cast<long long>(std::get<index>(member_ptrs)) -
+            reinterpret_cast<long long>(std::get<0>(member_ptrs)));
     }
 }
 template <auto ptr> inline constexpr std::string_view funname()
