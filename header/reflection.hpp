@@ -1,6 +1,7 @@
 #include <iostream>
 #include <source_location>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 class AnyType
@@ -58,8 +59,6 @@ struct person
 {
     int age;
     std::string name;
-    bool a;
-    bool end;
 };
 template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& visitor)
 {
@@ -84,7 +83,8 @@ template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& v
     }
     // ...
 }
-void visit_members_each_with_index(auto&& bevisited, auto&& visitor)
+
+void visit_each_member(auto&& bevisited, auto&& visitor)
 {
     using T = std::decay_t<decltype(bevisited)>;
     constexpr int N = num_of_number_v<T>;
@@ -94,29 +94,30 @@ void visit_members_each_with_index(auto&& bevisited, auto&& visitor)
     else if constexpr (N == 1)
     {
         auto&& [a1] = bevisited;
-        visitor.template operator()<T, std::decay_t<decltype(a1)>, 0>(a1);
+        visitor.template operator()<T, 0>(a1);
     }
     else if constexpr (N == 2)
     {
         auto&& [a1, a2] = bevisited;
-        visitor.template operator()<T, std::decay_t<decltype(a1)>, 0>(a1);
-        visitor.template operator()<T, std::decay_t<decltype(a2)>, 1>(a2);
+        visitor.template operator()<T, 0>(a1);
+        visitor.template operator()<T, 1>(a2);
     }
     else if constexpr (N == 3)
     {
         auto&& [a1, a2, a3] = bevisited;
-        visitor.template operator()<T, std::decay_t<decltype(a1)>, 0>(a1);
-        visitor.template operator()<T, std::decay_t<decltype(a2)>, 1>(a2);
-        visitor.template operator()<T, std::decay_t<decltype(a3)>, 2>(a3);
+        visitor.template operator()<T, 0>(a1);
+        visitor.template operator()<T, 1>(a2);
+        visitor.template operator()<T, 2>(a3);
     }
     else if constexpr (N == 4)
     {
         auto&& [a1, a2, a3, a4] = bevisited;
-        visitor.template operator()<T, std::decay_t<decltype(a1)>, 0>(a1);
-        visitor.template operator()<T, std::decay_t<decltype(a2)>, 1>(a2);
-        visitor.template operator()<T, std::decay_t<decltype(a3)>, 2>(a3);
-        visitor.template operator()<T, std::decay_t<decltype(a4)>, 3>(a4);
+        visitor.template operator()<T, 0>(a1);
+        visitor.template operator()<T, 1>(a2);
+        visitor.template operator()<T, 2>(a3);
+        visitor.template operator()<T, 3>(a4);
     }
+    // ...
 }
 auto visit_members(auto&& bevisited, auto&& visitor)
 {
@@ -125,7 +126,7 @@ auto visit_members(auto&& bevisited, auto&& visitor)
 }
 
 // 在 member_ptr.hpp 中（简化版本）
-template <class T> constexpr auto make_static_tuple_form()
+template <class T> constexpr auto make_static_tuple_form_type()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
     if constexpr (Count == 0)
@@ -146,7 +147,7 @@ template <class T> constexpr auto make_static_tuple_form()
     }
     // ...
 }
-template <class T, int index> constexpr long long struct_bias()
+template <class T, int index> constexpr long long bias_member()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
     if constexpr (Count == 0)
@@ -171,7 +172,7 @@ template <class T, int index> constexpr long long struct_bias()
         }
         if constexpr (index == 1)
         {
-            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&a1);
+            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&obj);
         }
     }
     else if constexpr (Count == 3)
@@ -184,11 +185,11 @@ template <class T, int index> constexpr long long struct_bias()
         }
         if constexpr (index == 1)
         {
-            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&a1);
+            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&obj);
         }
         if constexpr (index == 2)
         {
-            return reinterpret_cast<long long>(&a3) - reinterpret_cast<long long>(&a1);
+            return reinterpret_cast<long long>(&a3) - reinterpret_cast<long long>(&obj);
         }
     }
     else if constexpr (Count == 4)
@@ -201,38 +202,31 @@ template <class T, int index> constexpr long long struct_bias()
         }
         if constexpr (index == 1)
         {
-            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&a1);
+            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&obj);
         }
         if constexpr (index == 2)
         {
-            return reinterpret_cast<long long>(&a3) - reinterpret_cast<long long>(&a1);
+            return reinterpret_cast<long long>(&a3) - reinterpret_cast<long long>(&obj);
         }
         if constexpr (index == 3)
         {
-            return reinterpret_cast<long long>(&a4) - reinterpret_cast<long long>(&a1);
+            return reinterpret_cast<long long>(&a4) - reinterpret_cast<long long>(&obj);
         }
     }
+    // ...
 }
-// template <class T> class getname
-// {
-//     static constexpr T t{};
+template <auto ptr> 
+inline constexpr std::string_view funname()
+{
+    return std::source_location::current().function_name();
+}
 
-//     template <class B, class mem, mem B::* memptr> static consteval const char*
-//     get_name_by_static_var_ptr_template_fun_()
-//     {
-//         auto imf = std::source_location::current();
-//         return imf.function_name();
-//     }
-
-//     template <std::size_t I> static consteval const char* get_member_name()
-//     {
-//         if constexpr (I == 0 && num_of_number_v<T> >= 1)
-//         {
-//             return "";
-//         }
-//     }
-
-//   public:
-//     inline constexpr static const char* value[num_of_number_v<T>] = {get_member_name<0>(),
-//                                                                      get_member_name<1>()};
-// };
+template <class T>
+inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_in_fun_names()
+{
+    static constexpr auto pt = make_static_tuple_form_type<T>();
+    // 变量tuple
+    return std::apply([](auto... ptrs)
+                      { return std::array<std::string_view, sizeof...(ptrs)>{funname<ptrs>()...}; },
+                      pt);
+}

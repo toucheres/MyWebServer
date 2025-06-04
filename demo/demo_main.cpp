@@ -1,16 +1,26 @@
-#include "http.h"
-#include "mysqlHandle.h"
 #include "reflection.hpp"
 #include <iostream>
+#include <string>
+#include <string_view>
+#include <tuple>
 #include <ylt/reflection/member_names.hpp>
-MySQLHandle mysqldb;
-HttpServer httpServer;
+#include <ylt/reflection/member_ptr.hpp>
+
+
+struct test
+{
+    bool a;
+    std::string b;
+};
+
 int main()
 {
-    auto lam = []<class T, class mem, int index>(auto&& arg)
+    constexpr auto names = get_member_in_fun_names<test>();
+
+    // 打印成员名称进行验证
+    for (const auto& name : names)
     {
-        std::cout << "index: " << index << " bias: "<< struct_bias<T, index>() << " content: " << arg
-                  << std::endl;
-    };
-    visit_members_each_with_index(person{1,"123",1,0}, lam);
+        std::cout << name << std::endl;
+    }
+    return 0;
 }
