@@ -120,18 +120,16 @@ auto visit_members(auto&& bevisited, auto&& visitor)
     visit_members_impl<member_count>(bevisited, visitor);
 }
 
-template <class T> constexpr auto make_static_tuple_form_type()
+template <class T> constexpr auto make_static_memberptr_tuple_form_type()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
-    if constexpr (Count == 0)
-    {
-        return std::make_tuple();
-    }
-    else if constexpr (Count == 1)
+
+    // 使用 if constexpr 确保每个分支都有明确的返回类型
+    if constexpr (Count == 1)
     {
         static constexpr T obj{};
         auto&& [a1] = obj;
-        return std::make_tuple(&a1); // 返回成员指针
+        return std::make_tuple(&a1);
     }
     else if constexpr (Count == 2)
     {
@@ -139,75 +137,59 @@ template <class T> constexpr auto make_static_tuple_form_type()
         auto&& [a1, a2] = obj;
         return std::make_tuple(&a1, &a2);
     }
-    // ...
-}
-template <class T, int index> constexpr long long bias_member()
-{
-    constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
-    if constexpr (Count == 0)
-    {
-    }
-    else if constexpr (Count == 1)
-    {
-        static constexpr T obj{};
-        auto&& [a1] = obj;
-        if constexpr (index == 0)
-        {
-            return 0;
-        }
-    }
-    else if constexpr (Count == 2)
-    {
-        static constexpr T obj{};
-        auto&& [a1, a2] = obj;
-        if constexpr (index == 0)
-        {
-            return 0;
-        }
-        if constexpr (index == 1)
-        {
-            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&obj);
-        }
-    }
     else if constexpr (Count == 3)
     {
         static constexpr T obj{};
         auto&& [a1, a2, a3] = obj;
-        if constexpr (index == 0)
-        {
-            return 0;
-        }
-        if constexpr (index == 1)
-        {
-            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&obj);
-        }
-        if constexpr (index == 2)
-        {
-            return reinterpret_cast<long long>(&a3) - reinterpret_cast<long long>(&obj);
-        }
+        return std::make_tuple(&a1, &a2, &a3);
     }
     else if constexpr (Count == 4)
     {
         static constexpr T obj{};
         auto&& [a1, a2, a3, a4] = obj;
-        if constexpr (index == 0)
-        {
-            return 0;
-        }
-        if constexpr (index == 1)
-        {
-            return reinterpret_cast<long long>(&a2) - reinterpret_cast<long long>(&obj);
-        }
-        if constexpr (index == 2)
-        {
-            return reinterpret_cast<long long>(&a3) - reinterpret_cast<long long>(&obj);
-        }
-        if constexpr (index == 3)
-        {
-            return reinterpret_cast<long long>(&a4) - reinterpret_cast<long long>(&obj);
-        }
+        return std::make_tuple(&a1, &a2, &a3, &a4);
     }
-    // ...
+    else if constexpr (Count == 5)
+    {
+        static constexpr T obj{};
+        auto&& [a1, a2, a3, a4, a5] = obj;
+        return std::make_tuple(&a1, &a2, &a3, &a4, &a5);
+    }
+    else
+    {
+        // 所有其他情况（包括Count == 0）都返回空tuple
+        return std::tuple<>{};
+    }
+}
+
+constexpr long long distance_var(const auto& mem1, const auto& mem2)
+{
+    return reinterpret_cast<long long>(&mem1) - reinterpret_cast<long long>(&mem2);
+}
+
+template <class T, int index>
+concept index_in_range = (num_of_number_v<T>) > (index);
+
+template <class T, int index>
+constexpr long long bias_member()
+    requires index_in_range<T, index>
+{
+    constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
+
+    if constexpr (Count == 0 || index >= Count)
+    {
+        return 0;
+    }
+    else
+    {
+        // 使用已有的 make_static_memberptr_tuple_form_type 函数
+        static constexpr T obj{};
+        constexpr auto member_ptrs = make_static_memberptr_tuple_form_type<T>();
+        //[TODO] 强制类型转化破坏constexpr性
+        // 直接使用 std::get 获取对应成员的指针，然后计算偏移
+        return reinterpret_cast<long long>(reinterpret_cast<long long>(std::get<index>(member_ptrs)) -
+                                           reinterpret_cast<long long>(std::get<0>(member_ptrs)));
+    }
 }
 template <auto ptr> inline constexpr std::string_view funname()
 {
@@ -217,7 +199,7 @@ template <auto ptr> inline constexpr std::string_view funname()
 template <class T>
 inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_in_fun_names()
 {
-    static constexpr auto pt = make_static_tuple_form_type<T>();
+    static constexpr auto pt = make_static_memberptr_tuple_form_type<T>();
     return []<std::size_t... I>(std::index_sequence<I...>) -> auto
     {
         return std::array<std::string_view, num_of_number_v<T>>{funname<std::get<I>(pt)>()...};
@@ -228,9 +210,8 @@ inline constexpr std::string_view getname_from_funname(std::string_view in)
 {
 
     // gcc
-    // constexpr std::string_view funname() [with auto ptr = (& obj.test::a); std::string_view = std::basic_string_view<char>]
-    // clang
-    // std::string_view funname() [ptr = &obj.a]
+    // constexpr std::string_view funname() [with auto ptr = (& obj.test::a); std::string_view =
+    // std::basic_string_view<char>] clang std::string_view funname() [ptr = &obj.a]
     // 查找最后一个点号，成员名在点号之后
     std::size_t dot_pos = in.rfind('.');
     if (dot_pos == std::string_view::npos)

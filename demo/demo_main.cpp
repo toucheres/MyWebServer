@@ -1,31 +1,28 @@
 #include "reflection.hpp"
 #include <iostream>
 #include <string>
-#include <string_view>
 
-struct test
-{
-    bool a;
-    std::string b;
-};
 struct person
 {
-    int age;
-    std::string name;
+    int a;
+    std::string b;
+    int c;
 };
+
 int main()
 {
-    constexpr auto names = get_member_names<test>();
-    // 打印成员名称进行验证
-    for (const auto& name : names)
+    constexpr int member_count = num_of_number_v<person>;
+    std::cout << "Member count: " << member_count << std::endl;
+
+    if constexpr (member_count > 0)
     {
-        std::cout << name << std::endl;
+        constexpr auto members = make_static_memberptr_tuple_form_type<person>();
+        std::cout << "1 member address: " << std::get<0>(members) << std::endl;
+        std::cout << "2 member address: " << std::get<1>(members) << std::endl;
+        std::cout << "3 member address: " << std::get<2>(members) << std::endl;
     }
-    constexpr auto names_ = get_member_names<person>();
-    // 打印成员名称进行验证
-    for (const auto& name : names_)
-    {
-        std::cout << name << std::endl;
-    }
+    std::cout << bias_member<person, 0>()<<'\n';
+    std::cout << bias_member<person, 1>()<<'\n';
+    std::cout << bias_member<person, 2>()<<'\n';
     return 0;
 }
