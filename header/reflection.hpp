@@ -1,3 +1,4 @@
+#include <array>
 #include <iostream>
 #include <source_location>
 #include <string>
@@ -24,7 +25,6 @@ template <class T1, class T2> class is_same_all<T1, T2>
     constexpr static bool value = std::is_same_v<T1, T2>;
 };
 
-// 变量模板简化
 template <class T1, class T2, class... Ts>
 inline constexpr bool is_same_all_v = is_same_all<T1, T2, Ts...>::value;
 
@@ -55,11 +55,6 @@ template <class Type> class num_of_number
 // 变量模板简化
 template <class Type> inline constexpr int num_of_number_v = num_of_number<Type>::value;
 
-struct person
-{
-    int age;
-    std::string name;
-};
 template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& visitor)
 {
     if constexpr (N == 0)
@@ -125,7 +120,6 @@ auto visit_members(auto&& bevisited, auto&& visitor)
     visit_members_impl<member_count>(bevisited, visitor);
 }
 
-// 在 member_ptr.hpp 中（简化版本）
 template <class T> constexpr auto make_static_tuple_form_type()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
@@ -215,8 +209,7 @@ template <class T, int index> constexpr long long bias_member()
     }
     // ...
 }
-template <auto ptr> 
-inline constexpr std::string_view funname()
+template <auto ptr> inline constexpr std::string_view funname()
 {
     return std::source_location::current().function_name();
 }
@@ -225,8 +218,43 @@ template <class T>
 inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_in_fun_names()
 {
     static constexpr auto pt = make_static_tuple_form_type<T>();
-    // 变量tuple
-    return std::apply([](auto... ptrs)
-                      { return std::array<std::string_view, sizeof...(ptrs)>{funname<ptrs>()...}; },
-                      pt);
+    return []<std::size_t... I>(std::index_sequence<I...>) -> auto
+    {
+        return std::array<std::string_view, num_of_number_v<T>>{funname<std::get<I>(pt)>()...};
+    }(std::make_index_sequence<num_of_number_v<T>>{});
+}
+
+inline constexpr std::string_view getname_from_funname(std::string_view in)
+{
+
+    // gcc
+    // constexpr std::string_view funname() [with auto ptr = (& obj.test::a); std::string_view = std::basic_string_view<char>]
+    // clang
+    // std::string_view funname() [ptr = &obj.a]
+    // 查找最后一个点号，成员名在点号之后
+    std::size_t dot_pos = in.rfind('.');
+    if (dot_pos == std::string_view::npos)
+    {
+        return in; // 没有找到点号，返回原字符串
+    }
+    // 从点号后开始查找成员名
+    std::size_t start = dot_pos + 1;
+    // 查找成员名的结束位置（遇到 ')' 或 ';' 或 ']'）
+    std::size_t end = in.find_first_of(");]", start);
+    if (end == std::string_view::npos)
+    {
+        end = in.length();
+    }
+    return in.substr(start, end - start);
+}
+
+template <class T>
+inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_names()
+{
+    static constexpr auto names_in_fun = get_member_in_fun_names<T>();
+    return []<std::size_t... I>(std::index_sequence<I...>) -> auto
+    {
+        return std::array<std::string_view, num_of_number_v<T>>{
+            getname_from_funname(std::get<I>(names_in_fun))...};
+    }(std::make_index_sequence<num_of_number_v<T>>{});
 }
