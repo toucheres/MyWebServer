@@ -244,13 +244,13 @@ template <class T> std::string_view getClassName()
     std::cout << names_before;
     return names_before;
 }
-template <class T> constexpr auto class_name_in_fun()
+template <class T> consteval auto class_name_in_fun()
 {
     return std::source_location::current().function_name();
 }
 
 // 从函数名中提取类名
-inline std::string_view extract_class_name(std::string_view func_name)
+inline consteval std::string_view extract_class_name(std::string_view func_name)
 {
     // 支持GCC格式: [with T = users]
     std::size_t with_pos = func_name.find("with T = ");
@@ -283,10 +283,9 @@ inline std::string_view extract_class_name(std::string_view func_name)
     return func_name; // 如果没有找到匹配模式，返回原始字符串
 }
 
-template <class T> constexpr auto get_class_name()
+template <class T> consteval auto get_class_name()
 {
-    static constexpr auto names_before = class_name_in_fun<T>();
-    return extract_class_name(names_before);
+    return extract_class_name(class_name_in_fun<T>());
     // constexpr auto class_name_in_fun() [with T = users] //gcc
     // auto class_name_in_fun() [T = users] //clang
 }

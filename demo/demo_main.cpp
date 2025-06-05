@@ -38,12 +38,10 @@
 // +----+----------------------------+-------------+---------------------+
 // |  1 | root                       | 000000      | 2025-05-17 14:18:13 |
 // mysql>
-#include "../header/json_sql.hpp"
+#include "json_sql.hpp"
+#include "message.h"
 #include "users.h"
 #include <iostream>
-#include <source_location>
-#include <string>
-
 
 int main()
 {
@@ -84,6 +82,5 @@ int main()
     // std::cout << "Updated password: " << updated_user.password << std::endl;
 
     // fun<users>();
-    std::cout << get_class_name<users>()<<'\n';
     return 0;
 }
