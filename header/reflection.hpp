@@ -1,6 +1,7 @@
 #pragma once
 #include "reflection_macros.hpp"
 #include <array>
+#include <iostream>
 #include <source_location>
 #include <string_view>
 #include <tuple>
@@ -236,6 +237,61 @@ template <typename T> inline constexpr int num_of_number_with_inner_v = 1; // Pr
 
 template <Aggregate T>
 inline static int num_of_number_with_inner_v<T> = num_of_number_with_inner<T>::value;
+
+template <class T> std::string_view getClassName()
+{
+    static constexpr std::string_view names_before{std::source_location::current().function_name()};
+    std::cout << names_before;
+    return names_before;
+}
+template <class T> constexpr auto class_name_in_fun()
+{
+    return std::source_location::current().function_name();
+}
+
+// 从函数名中提取类名
+inline std::string_view extract_class_name(std::string_view func_name)
+{
+    // 支持GCC格式: [with T = users]
+    std::size_t with_pos = func_name.find("with T = ");
+    if (with_pos != std::string_view::npos) {
+        std::size_t start = with_pos + 9; // "with T = "的长度
+        std::size_t end = func_name.find(']', start);
+        if (end == std::string_view::npos) {
+            end = func_name.find(';', start);
+        }
+        if (end == std::string_view::npos) {
+            end = func_name.size();
+        }
+        return func_name.substr(start, end - start);
+    }
+    
+    // 支持Clang格式: [T = users]
+    std::size_t t_eq_pos = func_name.find("T = ");
+    if (t_eq_pos != std::string_view::npos) {
+        std::size_t start = t_eq_pos + 4; // "T = "的长度
+        std::size_t end = func_name.find(']', start);
+        if (end == std::string_view::npos) {
+            end = func_name.find(';', start);
+        }
+        if (end == std::string_view::npos) {
+            end = func_name.size();
+        }
+        return func_name.substr(start, end - start);
+    }
+    
+    return func_name; // 如果没有找到匹配模式，返回原始字符串
+}
+
+template <class T> constexpr auto get_class_name()
+{
+    static constexpr auto names_before = class_name_in_fun<T>();
+    return extract_class_name(names_before);
+    // constexpr auto class_name_in_fun() [with T = users] //gcc
+    // auto class_name_in_fun() [T = users] //clang
+}
+// void fun() [with T = users] //gcc
+// void fun() [T = users] clang
 
 #define constexpr_try(x)                                                                           \
     if constexpr (requires { x })                                                                  \
