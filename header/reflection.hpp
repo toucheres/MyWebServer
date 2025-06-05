@@ -200,12 +200,42 @@ template <int N> class INT
 
 template <Aggregate Type> class num_of_number_with_inner
 {
-public:
-    constexpr static Type instance{};
-    inline static int count = visit_members(
-        instance, [](auto... members)
-        { (num_of_number_with_inner<Type>::count += ... += num_of_number_v<decltype(members)>); });
+    // 计算成员总数的静态辅助函数
+    static constexpr int calculate_count()
+    {
+        if constexpr (!MeaningfulAggregate<Type>)
+        {
+            return 1; // 非聚合类型或特殊类型直接计为1个
+        }
+        else
+        {
+            int total = num_of_number_v<Type>; // 直接成员数量
+            // 使用功能性lambda来递归计算嵌套成员数量
+            static constexpr Type instance{};
+            visit_members(instance,
+                          [&total](auto member)
+                          {
+                              using MemberType = std::decay_t<decltype(member)>;
+                              if constexpr (MeaningfulAggregate<MemberType>)
+                              {
+                                  // 递归计算成员的成员数
+                                  total += num_of_number_with_inner<MemberType>::value - 1;
+                              }
+                          });
+
+            return total;
+        }
+    }
+
+  public:
+    // 预计算并存储结果
+    inline static int value = calculate_count();
 };
+
+template <typename T> inline constexpr int num_of_number_with_inner_v = 1; // Primary template
+
+template <Aggregate T>
+inline static int num_of_number_with_inner_v<T> = num_of_number_with_inner<T>::value;
 
 #define constexpr_try(x)                                                                           \
     if constexpr (requires { x })                                                                  \

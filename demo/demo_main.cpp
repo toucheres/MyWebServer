@@ -1,6 +1,8 @@
+#include "json.hpp"
 #include "reflection.hpp"
 #include <iostream>
 #include <string>
+#include <thread>
 
 struct inner
 {
@@ -17,6 +19,7 @@ struct person
 
 int main()
 {
-    static constexpr int at = num_of_number_with_inner<person>::count;
+    auto str = json{person{}};
+    std::cout << json{json::parse<person>(str)};
     return 0;
 }
