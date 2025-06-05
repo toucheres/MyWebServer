@@ -19,7 +19,7 @@ struct person
 
 int main()
 {
-    auto str = json{person{}};
-    std::cout << json{json::parse<person>(str)};
+    auto str = json::from(person{});
+    std::cout << json::to<person>(str) << '\n';
     return 0;
 }
