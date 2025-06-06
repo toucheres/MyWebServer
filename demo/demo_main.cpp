@@ -64,13 +64,10 @@ struct person
 
 int main()
 {
-    constexpr auto a = num_of_number_with_inner_v<person>;
-    std::cout << a;
-    // std::cout << Aggregate<person>;
-    // std::cout << MeaningfulAggregate<person>;
-    // std::cout << Aggregate<book>;
-    // std::cout << MeaningfulAggregate<book>;
-    // std::cout << Aggregate<std::string>;
-    // std::cout << MeaningfulAggregate<std::string>;
+    constexpr auto names = get_member_class_names_names_pair<person>();
+    for (auto&& [classname, name] : names)
+    {
+        std::cout << "class: " << classname << " ,name: " << name << '\n';
+    }
     return 0;
 }

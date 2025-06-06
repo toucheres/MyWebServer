@@ -72,14 +72,14 @@ template <typename Type> inline constexpr int num_of_number_v = num_of_number<Ty
 
 // 变量模板简化 - removed duplicate declaration with different constraint
 
-template <int N, class... Ts> void visit_members_impl(auto&& bevisited, auto&& visitor)
+template <int N, class... Ts> consteval void visit_members_impl(auto&& bevisited, auto&& visitor)
 {
     // 辅助函数，用于处理解构后的成员变量
     auto visit_helper = [&visitor](auto&&... args) { (visitor(args), ...); };
     GENERATE_VISIT_CASES(32) // 支持最多5个成员，可根据需要调整
 }
 
-void visit_each_member(auto&& bevisited, auto&& visitor)
+consteval void visit_each_member(auto&& bevisited, auto&& visitor)
     requires requires(decltype(visitor) v, std::decay_t<decltype(bevisited)> t) {
         typename std::decay_t<decltype(bevisited)>;
         { v.template operator()<std::decay_t<decltype(bevisited)>, 0>(std::declval<int>()) };
@@ -99,13 +99,13 @@ void visit_each_member(auto&& bevisited, auto&& visitor)
 
     GENERATE_VISIT_CASES(32) // 支持最多5个成员，可根据需要调整
 }
-auto visit_members(auto&& bevisited, auto&& visitor)
+constexpr auto visit_members(auto&& bevisited, auto&& visitor)
 {
     constexpr int member_count = num_of_number_v<std::decay_t<decltype(bevisited)>>;
     visit_members_impl<member_count>(bevisited, visitor);
 }
 
-template <Aggregate T> constexpr auto make_fake_constexpr_memberptr_tuple_form_type()
+template <Aggregate T> consteval auto make_fake_constexpr_memberptr_tuple_form_type()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
 
@@ -135,22 +135,23 @@ constexpr long long bias_member()
     else
     {
         // 使用已有的 make_fake_constexpr_memberptr_tuple_form_type 函数
-        static constexpr T obj{};
+        // static constexpr T obj{};
         constexpr auto member_ptrs = make_fake_constexpr_memberptr_tuple_form_type<T>();
         //[TODO] 强制类型转化破坏constexpr性
-        // 直接使用 std::get 获取对应成员的指针，然后计算偏移
-        return reinterpret_cast<long long>(
-            reinterpret_cast<long long>(std::get<index>(member_ptrs)) -
-            reinterpret_cast<long long>(std::get<0>(member_ptrs)));
+        // return reinterpret_cast<long long>(
+        //     reinterpret_cast<long long>(std::get<index>(member_ptrs)) -
+        //     reinterpret_cast<long long>(std::get<0>(member_ptrs)));
+        return std::bit_cast<char*>(std::get<index>(member_ptrs)) -
+               std::bit_cast<char*>(std::get<0>(member_ptrs));
     }
 }
-template <auto ptr> inline constexpr std::string_view funname()
+template <auto ptr> inline consteval std::string_view funname()
 {
     return std::source_location::current().function_name();
 }
 
 template <Aggregate T>
-inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_in_fun_names()
+inline consteval std::array<std::string_view, num_of_number_v<T>> get_member_in_fun_names()
 {
     static constexpr auto pt = make_fake_constexpr_memberptr_tuple_form_type<T>();
     return []<std::size_t... I>(std::index_sequence<I...>) -> auto
@@ -159,7 +160,7 @@ inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_in_
     }(std::make_index_sequence<num_of_number_v<T>>{});
 }
 
-inline constexpr std::string_view getname_from_funname(std::string_view in)
+inline consteval std::string_view getname_from_funname(std::string_view in)
 {
 
     // gcc
@@ -183,7 +184,7 @@ inline constexpr std::string_view getname_from_funname(std::string_view in)
 }
 
 template <Aggregate T>
-inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_names()
+inline consteval std::array<std::string_view, num_of_number_v<T>> get_member_names()
 {
     static constexpr auto names_in_fun = get_member_in_fun_names<T>();
     return []<std::size_t... I>(std::index_sequence<I...>) -> auto
@@ -192,6 +193,13 @@ inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_nam
             getname_from_funname(std::get<I>(names_in_fun))...};
     }(std::make_index_sequence<num_of_number_v<T>>{});
 }
+template <Aggregate T, int index>
+    requires index_in_range_v<T, index>
+inline consteval std::string_view get_member_name()
+{
+    return get_member_names<T>()[index];
+}
+
 template <int N> class INT
 {
   public:
@@ -217,49 +225,6 @@ template <class Type> consteval int num_of_number_with_inner()
     }
     return 1;
 }
-
-// template <Aggregate Type> class num_of_number_with_inner
-// {
-//     // 计算成员总数的静态辅助函数
-//     static constexpr int calculate_count()
-//     {
-//         if constexpr (!MeaningfulAggregate<Type>)
-//         {
-//             return 1; // 非聚合类型或特殊类型直接计为1个
-//         }
-//         else
-//         {
-//             int total = num_of_number_v<Type>; // 直接成员数量
-//             // 使用功能性lambda来递归计算嵌套成员数量
-//             static constexpr Type instance{};
-//             visit_members(instance,
-//                           [&total](auto member)
-//                           {
-//                               using MemberType = std::decay_t<decltype(member)>;
-//                               if constexpr (MeaningfulAggregate<MemberType>)
-//                               {
-//                                   // 递归计算成员的成员数
-//                                   total += num_of_number_with_inner<MemberType>::value - 1;
-//                               }
-//                               else
-//                               {
-//                                   // total++;
-//                               }
-//                               return total;
-//                           });
-//         }
-//         // return []<std::size_t... I>(std::index_sequence<I...>) -> auto
-//         // {
-//         //     return std::array<std::string_view, num_of_number_v<Type>>{
-//         //         translate_name(get_class_name_from_ptr(
-//         //             get_class_name<std::decay_t<decltype(std::get<I>(pt))>>()))...};
-//         // }(std::make_index_sequence<num_of_number_v<Type>>{});
-//     }
-
-//   public:
-//     // 预计算并存储结果
-//     inline static int value = calculate_count();
-// };
 
 template <typename T> inline constexpr int num_of_number_with_inner_v = 1; // Primary template
 
@@ -407,6 +372,19 @@ template <class T> consteval auto get_member_class_names()
     // std::basic_string<char>
     // std::basic_string<char>
     // std::basic_string<char>
+}
+
+template <class T> consteval auto get_member_class_names_names_pair()
+{
+    static constexpr auto pt = make_fake_constexpr_memberptr_tuple_form_type<T>();
+    return []<std::size_t... I>(std::index_sequence<I...>) -> auto
+    {
+        return std::array<std::pair<std::string_view, std::string_view>, num_of_number_v<T>>{
+            std::pair<std::string_view, std::string_view>{
+                translate_name(get_class_name_from_ptr(
+                    get_class_name<std::decay_t<decltype(std::get<I>(pt))>>())),
+                get_member_name<T, I>()}...};
+    }(std::make_index_sequence<num_of_number_v<T>>{});
 }
 
 #define constexpr_try(x)                                                                           \
