@@ -6,6 +6,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
 class AnyType
 {
   public:
@@ -106,7 +107,7 @@ auto visit_members(auto&& bevisited, auto&& visitor)
     visit_members_impl<member_count>(bevisited, visitor);
 }
 
-template <Aggregate T> constexpr auto make_static_memberptr_tuple_form_type()
+template <Aggregate T> constexpr auto make_fake_constexpr_memberptr_tuple_form_type()
 {
     constexpr size_t Count = num_of_number_v<std::decay_t<T>>;
 
@@ -135,9 +136,9 @@ constexpr long long bias_member()
     }
     else
     {
-        // 使用已有的 make_static_memberptr_tuple_form_type 函数
+        // 使用已有的 make_fake_constexpr_memberptr_tuple_form_type 函数
         static constexpr T obj{};
-        constexpr auto member_ptrs = make_static_memberptr_tuple_form_type<T>();
+        constexpr auto member_ptrs = make_fake_constexpr_memberptr_tuple_form_type<T>();
         //[TODO] 强制类型转化破坏constexpr性
         // 直接使用 std::get 获取对应成员的指针，然后计算偏移
         return reinterpret_cast<long long>(
@@ -153,7 +154,7 @@ template <auto ptr> inline constexpr std::string_view funname()
 template <Aggregate T>
 inline constexpr std::array<std::string_view, num_of_number_v<T>> get_member_in_fun_names()
 {
-    static constexpr auto pt = make_static_memberptr_tuple_form_type<T>();
+    static constexpr auto pt = make_fake_constexpr_memberptr_tuple_form_type<T>();
     return []<std::size_t... I>(std::index_sequence<I...>) -> auto
     {
         return std::array<std::string_view, num_of_number_v<T>>{funname<std::get<I>(pt)>()...};
@@ -222,10 +223,20 @@ template <Aggregate Type> class num_of_number_with_inner
                                   // 递归计算成员的成员数
                                   total += num_of_number_with_inner<MemberType>::value - 1;
                               }
+                              else
+                              {
+                                  //total++;
+                              }
                           });
 
             return total;
         }
+        // return []<std::size_t... I>(std::index_sequence<I...>) -> auto
+        // {
+        //     return std::array<std::string_view, num_of_number_v<Type>>{
+        //         translate_name(get_class_name_from_ptr(
+        //             get_class_name<std::decay_t<decltype(std::get<I>(pt))>>()))...};
+        // }(std::make_index_sequence<num_of_number_v<Type>>{});
     }
 
   public:
@@ -238,12 +249,6 @@ template <typename T> inline constexpr int num_of_number_with_inner_v = 1; // Pr
 template <Aggregate T>
 inline static int num_of_number_with_inner_v<T> = num_of_number_with_inner<T>::value;
 
-template <class T> std::string_view getClassName()
-{
-    static constexpr std::string_view names_before{std::source_location::current().function_name()};
-    std::cout << names_before;
-    return names_before;
-}
 template <class T> consteval auto class_name_in_fun()
 {
     return std::source_location::current().function_name();
@@ -254,32 +259,38 @@ inline consteval std::string_view extract_class_name(std::string_view func_name)
 {
     // 支持GCC格式: [with T = users]
     std::size_t with_pos = func_name.find("with T = ");
-    if (with_pos != std::string_view::npos) {
+    if (with_pos != std::string_view::npos)
+    {
         std::size_t start = with_pos + 9; // "with T = "的长度
         std::size_t end = func_name.find(']', start);
-        if (end == std::string_view::npos) {
+        if (end == std::string_view::npos)
+        {
             end = func_name.find(';', start);
         }
-        if (end == std::string_view::npos) {
+        if (end == std::string_view::npos)
+        {
             end = func_name.size();
         }
         return func_name.substr(start, end - start);
     }
-    
+
     // 支持Clang格式: [T = users]
     std::size_t t_eq_pos = func_name.find("T = ");
-    if (t_eq_pos != std::string_view::npos) {
+    if (t_eq_pos != std::string_view::npos)
+    {
         std::size_t start = t_eq_pos + 4; // "T = "的长度
         std::size_t end = func_name.find(']', start);
-        if (end == std::string_view::npos) {
+        if (end == std::string_view::npos)
+        {
             end = func_name.find(';', start);
         }
-        if (end == std::string_view::npos) {
+        if (end == std::string_view::npos)
+        {
             end = func_name.size();
         }
         return func_name.substr(start, end - start);
     }
-    
+
     return func_name; // 如果没有找到匹配模式，返回原始字符串
 }
 
@@ -291,6 +302,94 @@ template <class T> consteval auto get_class_name()
 }
 // void fun() [with T = users] //gcc
 // void fun() [T = users] clang
+
+consteval std::string_view get_class_name_from_ptr(std::string_view type_str)
+{
+    // clang
+    // const int *
+    //  const std::basic_string<char> *
+    //  const std::basic_string<char> *
+    //  const std::basic_string<char> *
+
+    // gcc
+    // const int*
+    // const std::__cxx11::basic_string<char>*
+    // const std::__cxx11::basic_string<char>*
+    // const std::__cxx11::basic_string<char>*
+    // 去除前缀"const "（如果存在）
+    if (type_str.starts_with("const "))
+    {
+        type_str.remove_prefix(6); // "const "长度为6
+    }
+
+    // 去除尾部指针符号
+    std::size_t ptr_pos = type_str.find_last_of('*');
+    if (ptr_pos != std::string_view::npos)
+    {
+        type_str = type_str.substr(0, ptr_pos);
+    }
+
+    // 去除尾部空格
+    while (!type_str.empty() && type_str.back() == ' ')
+    {
+        type_str.remove_suffix(1);
+    }
+
+    // // 处理命名空间
+    // // 对于GCC格式: std::__cxx11::basic_string<char>
+    // if (std::size_t cxx11_pos = type_str.find("__cxx11::"); cxx11_pos != std::string_view::npos)
+    // {
+    //     std::size_t start = type_str.substr(0, cxx11_pos).find_last_of(':');
+    //     if (start != std::string_view::npos)
+    //     {
+    //         type_str = type_str.substr(0, start + 1) +
+    //                    type_str.substr(cxx11_pos + 9); // "__cxx11::"长度为9
+    //     }
+    // }
+
+    return type_str;
+    return {};
+}
+
+consteval std::string_view translate_name(std::string_view in)
+{
+    // 编译期静态映射表
+    static const constexpr std::pair<std::string_view, std::string_view> map[]{
+        // 标准类型映射
+        std::pair{get_class_name<std::string>(), "string"},
+        std::pair{get_class_name<int>(), "int"}};
+    // 编译期线性查找
+    for (const auto& [from, to] : map)
+    {
+        if (in == from)
+        {
+            return to;
+        }
+    }
+    // 如果不匹配，返回原始输入
+    return in;
+}
+
+template <class T> consteval auto get_member_class_names()
+{
+    static constexpr auto pt = make_fake_constexpr_memberptr_tuple_form_type<T>();
+    return []<std::size_t... I>(std::index_sequence<I...>) -> auto
+    {
+        return std::array<std::string_view, num_of_number_v<T>>{translate_name(
+            get_class_name_from_ptr(get_class_name<std::decay_t<decltype(std::get<I>(pt))>>()))...};
+    }(std::make_index_sequence<num_of_number_v<T>>{});
+    // gcc
+    // int
+    // std::__cxx11::basic_string<char>
+    // std::__cxx11::basic_string<char>
+    // std::__cxx11::basic_string<char>
+
+    // clang
+    // int
+    // std::basic_string<char>
+    // std::basic_string<char>
+    // std::basic_string<char>
+}
 
 #define constexpr_try(x)                                                                           \
     if constexpr (requires { x })                                                                  \
