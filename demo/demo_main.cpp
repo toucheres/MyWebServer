@@ -38,17 +38,20 @@
 // +----+----------------------------+-------------+---------------------+
 // |  1 | root                       | 000000      | 2025-05-17 14:18:13 |
 // mysql>
-#include "json_sql.hpp"
-#include "message.h"
-#include "users.h"
-#include <array>
-#include <iostream>
-#include <string_view>
-#include <utility>
 
+#include "reflection.hpp"
+#include <iostream>
+#include <string>
+
+struct imf
+{
+    std::string bookname;
+    int price;
+};
 struct book
 {
     std::string bookname;
+    imf i;
     int price;
 };
 
@@ -61,14 +64,13 @@ struct person
 
 int main()
 {
-    static constexpr auto pt = make_fake_constexpr_memberptr_tuple_form_type<person>();
-    // num_of_number_with_inner
-    constexpr std::array<std::pair<std::string_view, std::string_view>, 7> arr = {};
-    auto a = num_of_number_with_inner_v<decltype(arr)>;
-    // for (auto& m : a)
-    // {
-    //     std::cout << m << "\n";
-    // }
+    constexpr auto a = num_of_number_with_inner_v<person>;
     std::cout << a;
+    // std::cout << Aggregate<person>;
+    // std::cout << MeaningfulAggregate<person>;
+    // std::cout << Aggregate<book>;
+    // std::cout << MeaningfulAggregate<book>;
+    // std::cout << Aggregate<std::string>;
+    // std::cout << MeaningfulAggregate<std::string>;
     return 0;
 }

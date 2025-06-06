@@ -1,12 +1,10 @@
 #pragma once
 #include "reflection_macros.hpp"
 #include <array>
-#include <iostream>
 #include <source_location>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
-#include <unordered_map>
 class AnyType
 {
   public:
@@ -199,55 +197,74 @@ template <int N> class INT
   public:
     static constexpr int value = N;
 };
-
-template <Aggregate Type> class num_of_number_with_inner
+template <class Type> consteval int num_of_number_with_inner()
 {
-    // 计算成员总数的静态辅助函数
-    static constexpr int calculate_count()
+    if constexpr (!Aggregate<Type>)
     {
-        if constexpr (!MeaningfulAggregate<Type>)
-        {
-            return 1; // 非聚合类型或特殊类型直接计为1个
-        }
-        else
-        {
-            int total = num_of_number_v<Type>; // 直接成员数量
-            // 使用功能性lambda来递归计算嵌套成员数量
-            static constexpr Type instance{};
-            visit_members(instance,
-                          [&total](auto member)
-                          {
-                              using MemberType = std::decay_t<decltype(member)>;
-                              if constexpr (MeaningfulAggregate<MemberType>)
-                              {
-                                  // 递归计算成员的成员数
-                                  total += num_of_number_with_inner<MemberType>::value - 1;
-                              }
-                              else
-                              {
-                                  //total++;
-                              }
-                          });
-
-            return total;
-        }
-        // return []<std::size_t... I>(std::index_sequence<I...>) -> auto
-        // {
-        //     return std::array<std::string_view, num_of_number_v<Type>>{
-        //         translate_name(get_class_name_from_ptr(
-        //             get_class_name<std::decay_t<decltype(std::get<I>(pt))>>()))...};
-        // }(std::make_index_sequence<num_of_number_v<Type>>{});
+        return 1; // 非聚合类型或特殊类型直接计为1个
     }
+    else if constexpr (MeaningfulAggregate<Type>)
+    {
 
-  public:
-    // 预计算并存储结果
-    inline static int value = calculate_count();
-};
+        auto instance = make_fake_constexpr_memberptr_tuple_form_type<Type>();
+        // 使用功能性lambda来递归计算嵌套成员数量
+        return []<std::size_t... I>(std::index_sequence<I...>) -> auto
+        {
+            return (0 + ... +
+                    num_of_number_with_inner<
+                        std::remove_pointer_t<std::decay_t<decltype(std::get<I>(instance))>>>());
+        }(std::make_index_sequence<num_of_number_v<Type>>{});
+    }
+    return 1;
+}
+
+// template <Aggregate Type> class num_of_number_with_inner
+// {
+//     // 计算成员总数的静态辅助函数
+//     static constexpr int calculate_count()
+//     {
+//         if constexpr (!MeaningfulAggregate<Type>)
+//         {
+//             return 1; // 非聚合类型或特殊类型直接计为1个
+//         }
+//         else
+//         {
+//             int total = num_of_number_v<Type>; // 直接成员数量
+//             // 使用功能性lambda来递归计算嵌套成员数量
+//             static constexpr Type instance{};
+//             visit_members(instance,
+//                           [&total](auto member)
+//                           {
+//                               using MemberType = std::decay_t<decltype(member)>;
+//                               if constexpr (MeaningfulAggregate<MemberType>)
+//                               {
+//                                   // 递归计算成员的成员数
+//                                   total += num_of_number_with_inner<MemberType>::value - 1;
+//                               }
+//                               else
+//                               {
+//                                   // total++;
+//                               }
+//                               return total;
+//                           });
+//         }
+//         // return []<std::size_t... I>(std::index_sequence<I...>) -> auto
+//         // {
+//         //     return std::array<std::string_view, num_of_number_v<Type>>{
+//         //         translate_name(get_class_name_from_ptr(
+//         //             get_class_name<std::decay_t<decltype(std::get<I>(pt))>>()))...};
+//         // }(std::make_index_sequence<num_of_number_v<Type>>{});
+//     }
+
+//   public:
+//     // 预计算并存储结果
+//     inline static int value = calculate_count();
+// };
 
 template <typename T> inline constexpr int num_of_number_with_inner_v = 1; // Primary template
 
 template <Aggregate T>
-inline static int num_of_number_with_inner_v<T> = num_of_number_with_inner<T>::value;
+inline constexpr int num_of_number_with_inner_v<T> = num_of_number_with_inner<T>();
 
 template <class T> consteval auto class_name_in_fun()
 {
@@ -337,7 +354,8 @@ consteval std::string_view get_class_name_from_ptr(std::string_view type_str)
 
     // // 处理命名空间
     // // 对于GCC格式: std::__cxx11::basic_string<char>
-    // if (std::size_t cxx11_pos = type_str.find("__cxx11::"); cxx11_pos != std::string_view::npos)
+    // if (std::size_t cxx11_pos = type_str.find("__cxx11::"); cxx11_pos !=
+    // std::string_view::npos)
     // {
     //     std::size_t start = type_str.substr(0, cxx11_pos).find_last_of(':');
     //     if (start != std::string_view::npos)
