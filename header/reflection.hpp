@@ -538,10 +538,9 @@ template <typename R, typename... Args, R (*F)(Args...) noexcept> class get_args
 };
 template <auto F> inline constexpr size_t get_args_count_v = get_args_count<F>::value;
 
-template <class T1, class T2>
-class typePair
+template <class T1, class T2> class typePair
 {
-public:
+  public:
     using first = T1;
     using secend = T2;
 };
@@ -579,13 +578,17 @@ template <class... Types> class typeVector
             {
                 return -1;
             }
-            if constexpr (is_same_all_v<getType<index>, T>)
-            {
-                return index;
-            }
             else
-            {
-                return helperfun<index + 1>();
+            { // 先检查索引，再访问元素
+                using CurrentType = getType<index>;
+                if constexpr (is_same_all_v<CurrentType, T>)
+                {
+                    return index;
+                }
+                else
+                {
+                    return helperfun<index + 1>();
+                }
             }
         };
 
@@ -600,41 +603,83 @@ template <class... Types> class typeVector
         {
             if constexpr (index < 0)
             {
-                return -1;
-            }
-            if constexpr (is_same_all_v<getType<index>, T>)
-            {
-                return index;
+                return -1; // 未找到，返回-1
             }
             else
             {
-                return helperfun<index - 1>();
+                // 先检查索引，再访问元素
+                using CurrentType = getType<index>;
+                if constexpr (is_same_all_v<CurrentType, T>)
+                {
+                    return index;
+                }
+                else
+                {
+                    return helperfun<index - 1>();
+                }
             }
         };
+
       public:
-        constexpr static int value = helperfun<sizeof...(Types)-1>();
+        constexpr static int value = helperfun<sizeof...(Types) - 1>();
     };
     template <class T> inline constexpr static int rfind = rfind_t<T>::value;
 
-    // template <class T, int index>
-    // class insert_t
-    // {
-    // };
-    // template <class T, int index> using insert = insert_t<T,index>::Type;
+    template <class T, int index> class insert_t
+    {
+        // 递归实现，将typeVector分割成前后两部分，然后在中间插入T
+        template <int i, class... Front, class... Back>
+        static auto helper(typeVector<Front...>, typeVector<Back...>)
+        {
+            if constexpr (i == 0)
+                return typeVector<T, Back...>{};
+            else if constexpr (i == index)
+                return typeVector<Front..., T, Back...>{};
+            else
+                return helper<i - 1>(
+                    typeVector<Front..., typename typeVector<Back...>::template getType<0>>(),
+                    typename typeVector<Back...>::template push_front<void>::template push_back<
+                        void>());
+        }
 
-    // template <class T, int index>
-    // class divid_t
-    // {
-    //     // typePair<typeVector,typeVector>
-    // };
-    // template <class T, int index> using divid = divid_t<T,index>::Type;
-    
-    // template <typeVector T1, typeVector T2>
-    // class merge_t
-    // {
-    //     // 
-    // };
-    // template <typeVector T1, typeVector T2> using merge = merge_t<T1,T2>::Type;
+      public:
+        using Type =
+            decltype(helper<0>(std::declval<typeVector<>>(), std::declval<typeVector<Types...>>()));
+    };
+    template <class T, int index> using insert = insert_t<T, index>::Type;
+
+    template <int index> class divid_t
+    {
+        // 递归实现，将typeVector分割成前index个元素和剩余元素
+        template <typename, typename, typename> struct helper_impl;
+
+        template <typename Tuple, std::size_t... I1, std::size_t... I2>
+        struct helper_impl<Tuple, std::index_sequence<I1...>, std::index_sequence<I2...>>
+        {
+            using first_type = typeVector<std::tuple_element_t<I1, Tuple>...>;
+            using second_type = typeVector<std::tuple_element_t<I2 + index, Tuple>...>;
+            using type = typePair<first_type, second_type>;
+        };
+
+      public:
+        using tuple_type = std::tuple<Types...>;
+        static constexpr std::size_t total_size = sizeof...(Types);
+
+        // 确保索引不超出范围
+        static_assert(index <= total_size, "Index out of range in divid_t");
+
+        using Type = typename helper_impl<tuple_type, std::make_index_sequence<index>,
+                                          std::make_index_sequence<total_size - index>>::type;
+    };
+    template <int index> using divid = divid_t<index>::Type;
+
+    template <typename OtherTypeVector> class merge_t;
+
+    template <typename... T1s> class merge_t<typeVector<T1s...>>
+    {
+      public:
+        using Type = typeVector<Types..., T1s...>;
+    };
+
+    template <class OtherTypeVector> using merge = typename merge_t<OtherTypeVector>::Type;
 };
-
-// 添加值模板别名

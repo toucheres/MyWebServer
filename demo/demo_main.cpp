@@ -90,6 +90,7 @@ int main()
     // corus.getManager().add(a);
     // corus.start();
     // std::cout << b;
-    constexpr auto a= typeVector<int, int, long long, std::string>::find<long long>;
+    constexpr int a =
+        typeVector<int, long, long long>::insert<double, 1>::divid<1>::secend::find<double>;
     std::cout << a << '\n';
 }
