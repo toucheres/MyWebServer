@@ -39,35 +39,48 @@
 // |  1 | root                       | 000000      | 2025-05-17 14:18:13 |
 // mysql>
 
+#include "corutine.hpp"
+#include "file.h"
 #include "reflection.hpp"
+#include "signal_slots.hpp"
+#include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <string>
+#include <vector>
+class stdiolistener : public co_async
+{
+  public:
+    signal<std::string_view> on_user_input;
+    signal<> on_exit;
+    virtual EventStatus eventGo()
+    {
+        auto& stdaio = async_in_out::getInstance();
+        auto in = stdaio.read_line();
 
-struct imf
-{
-    std::string bookname;
-    int price;
-};
-struct book
-{
-    std::string bookname;
-    imf i;
-    int price;
-};
-
-struct person
-{
-    int age;
-    std::string name;
-    book a;
+        if (in == std::string{""})
+        {
+            return EventStatus::Continue;
+        }
+        else if (in == std::string{"quit\n"})
+        {
+            on_exit.emit();
+            return EventStatus::Stop;
+        }
+        else
+        {
+            on_user_input.emit(in);
+            return EventStatus::Continue;
+        }
+    }
 };
 
 int main()
 {
-    constexpr auto names = get_member_class_names_names_pair<person>();
-    for (auto&& [classname, name] : names)
-    {
-        std::cout << "class: " << classname << " ,name: " << name << '\n';
-    }
-    return 0;
+    stdiolistener a;
+    a.on_user_input.connect([]() { std::cout << "get something but dont care: " << '\n'; });
+    a.on_exit.connect([]() { exit(0); });
+    auto& corus = Co_Start_Manager::getInstance();
+    corus.getManager().add(a);
+    corus.start();
 }

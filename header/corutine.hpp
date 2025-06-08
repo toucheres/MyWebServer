@@ -117,7 +117,9 @@ template <typename RET = void, typename YIELD = void> class Task
         std::coroutine_handle<promise_type> handle;
 
       public:
-        Awaiter(std::coroutine_handle<promise_type> h) : handle(h) {}
+        Awaiter(std::coroutine_handle<promise_type> h) : handle(h)
+        {
+        }
 
         bool await_ready() const noexcept
         {
@@ -307,7 +309,9 @@ template <typename YIELD> class Task<void, YIELD>
         std::coroutine_handle<promise_type> handle;
 
       public:
-        Awaiter(std::coroutine_handle<promise_type> h) : handle(h) {}
+        Awaiter(std::coroutine_handle<promise_type> h) : handle(h)
+        {
+        }
 
         bool await_ready() const noexcept
         {
@@ -497,7 +501,9 @@ template <> class Task<void, void>
         std::coroutine_handle<promise_type> handle;
 
       public:
-        Awaiter(std::coroutine_handle<promise_type> h) : handle(h) {}
+        Awaiter(std::coroutine_handle<promise_type> h) : handle(h)
+        {
+        }
 
         bool await_ready() const noexcept
         {
@@ -843,5 +849,8 @@ class Co_Start_Manager
         return instance;
     }
 
-    Co_Manager& getManager() { return manager; }
+    Co_Manager& getManager()
+    {
+        return manager;
+    }
 };

@@ -72,14 +72,14 @@ template <typename Type> inline constexpr int num_of_number_v = num_of_number<Ty
 
 // 变量模板简化 - removed duplicate declaration with different constraint
 
-template <int N, class... Ts> consteval void visit_members_impl(auto&& bevisited, auto&& visitor)
+template <int N, class... Ts> constexpr void visit_members_impl(auto&& bevisited, auto&& visitor)
 {
     // 辅助函数，用于处理解构后的成员变量
     auto visit_helper = [&visitor](auto&&... args) { (visitor(args), ...); };
     GENERATE_VISIT_CASES(32) // 支持最多5个成员，可根据需要调整
 }
 
-consteval void visit_each_member(auto&& bevisited, auto&& visitor)
+constexpr void visit_each_member(auto&& bevisited, auto&& visitor)
     requires requires(decltype(visitor) v, std::decay_t<decltype(bevisited)> t) {
         typename std::decay_t<decltype(bevisited)>;
         { v.template operator()<std::decay_t<decltype(bevisited)>, 0>(std::declval<int>()) };
@@ -374,7 +374,7 @@ template <class T> consteval auto get_member_class_names()
     // std::basic_string<char>
 }
 
-template <class T> consteval auto get_member_class_names_names_pair()
+template <class T> consteval auto get_member_classname_name_pairs()
 {
     static constexpr auto pt = make_fake_constexpr_memberptr_tuple_form_type<T>();
     return []<std::size_t... I>(std::index_sequence<I...>) -> auto
