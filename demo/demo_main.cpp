@@ -89,8 +89,7 @@ int main()
     // auto& corus = Co_Start_Manager::getInstance();
     // corus.getManager().add(a);
     // corus.start();
-    get_return_type_t<testfun> b = 0;
-    get_args_type_t<testfun, 0> a = 0;
-    get_args_type_t<testfun, 1> c = 0;
-    std::cout << b;
+    // std::cout << b;
+    constexpr auto a= typeVector<int, int, long long, std::string>::find<long long>;
+    std::cout << a << '\n';
 }

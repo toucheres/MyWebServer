@@ -450,20 +450,18 @@ template <auto fun> using get_return_type_t = get_return_type<fun>::Type;
     }
 #define constexpr_catch else
 
-    // 主模板声明
-    template <auto callable, size_t Index>
-    class get_args_type;
+// 主模板声明
+template <auto callable, size_t Index> class get_args_type;
 
 // 函数指针特化
-template <typename R, typename... Args, size_t Index, R (*F)(Args...)>
-class get_args_type<F, Index>
+template <typename R, typename... Args, size_t Index, R (*F)(Args...)> class get_args_type<F, Index>
 {
-private:
+  private:
     // 使用tuple保存所有参数类型
     using args_tuple = std::tuple<Args...>;
     static_assert(Index < sizeof...(Args), "Parameter index out of range");
-    
-public:
+
+  public:
     // 通过tuple_element获取指定位置的类型
     using type = std::tuple_element_t<Index, args_tuple>;
 };
@@ -472,11 +470,11 @@ public:
 template <typename R, typename C, typename... Args, size_t Index, R (C::*F)(Args...)>
 class get_args_type<F, Index>
 {
-private:
+  private:
     using args_tuple = std::tuple<Args...>;
     static_assert(Index < sizeof...(Args), "Parameter index out of range");
-    
-public:
+
+  public:
     using type = std::tuple_element_t<Index, args_tuple>;
 };
 
@@ -484,11 +482,11 @@ public:
 template <typename R, typename C, typename... Args, size_t Index, R (C::*F)(Args...) const>
 class get_args_type<F, Index>
 {
-private:
+  private:
     using args_tuple = std::tuple<Args...>;
     static_assert(Index < sizeof...(Args), "Parameter index out of range");
-    
-public:
+
+  public:
     using type = std::tuple_element_t<Index, args_tuple>;
 };
 
@@ -496,35 +494,31 @@ public:
 template <typename R, typename... Args, size_t Index, R (*F)(Args...) noexcept>
 class get_args_type<F, Index>
 {
-private:
+  private:
     using args_tuple = std::tuple<Args...>;
     static_assert(Index < sizeof...(Args), "Parameter index out of range");
-    
-public:
+
+  public:
     using type = std::tuple_element_t<Index, args_tuple>;
 };
 
 // 添加帮助模板别名
-template <auto F, size_t Index>
-using get_args_type_t = typename get_args_type<F, Index>::type;
+template <auto F, size_t Index> using get_args_type_t = typename get_args_type<F, Index>::type;
 
 // 获取函数参数数量
-template <auto callable>
-class get_args_count;
+template <auto callable> class get_args_count;
 
 // 函数指针特化
-template <typename R, typename... Args, R (*F)(Args...)>
-class get_args_count<F>
+template <typename R, typename... Args, R (*F)(Args...)> class get_args_count<F>
 {
-public:
+  public:
     static constexpr size_t value = sizeof...(Args);
 };
 
 // 成员函数指针特化
-template <typename R, typename C, typename... Args, R (C::*F)(Args...)>
-class get_args_count<F>
+template <typename R, typename C, typename... Args, R (C::*F)(Args...)> class get_args_count<F>
 {
-public:
+  public:
     static constexpr size_t value = sizeof...(Args);
 };
 
@@ -532,18 +526,115 @@ public:
 template <typename R, typename C, typename... Args, R (C::*F)(Args...) const>
 class get_args_count<F>
 {
-public:
+  public:
     static constexpr size_t value = sizeof...(Args);
 };
 
 // noexcept函数指针特化
-template <typename R, typename... Args, R (*F)(Args...) noexcept>
-class get_args_count<F>
+template <typename R, typename... Args, R (*F)(Args...) noexcept> class get_args_count<F>
+{
+  public:
+    static constexpr size_t value = sizeof...(Args);
+};
+template <auto F> inline constexpr size_t get_args_count_v = get_args_count<F>::value;
+
+template <class T1, class T2>
+class typePair
 {
 public:
-    static constexpr size_t value = sizeof...(Args);
+    using first = T1;
+    using secend = T2;
+};
+
+template <class... Types> class typeVector
+{
+  public:
+    template <int index> class getType_t
+    {
+      public:
+        // 使用 std::tuple_element_t 直接获取类型，无需创建实际的 tuple 实例
+        using Type = std::tuple_element_t<index, std::tuple<Types...>>;
+    };
+    template <int index> using getType = getType_t<index>::Type;
+
+    template <class T> class push_back_t
+    {
+      public:
+        using Type = typeVector<Types..., T>;
+    };
+    template <class T> using push_back = push_back_t<T>::Type;
+
+    template <class T> class push_front_t
+    {
+      public:
+        using Type = typeVector<T, Types...>;
+    };
+    template <class T> using push_front = push_front_t<T>::Type;
+
+    template <class T> class find_t
+    {
+        template <int index> constexpr static auto helperfun()
+        {
+            if constexpr (index >= sizeof...(Types))
+            {
+                return -1;
+            }
+            if constexpr (is_same_all_v<getType<index>, T>)
+            {
+                return index;
+            }
+            else
+            {
+                return helperfun<index + 1>();
+            }
+        };
+
+      public:
+        constexpr static int value = helperfun<0>();
+    };
+    template <class T> inline constexpr static int find = find_t<T>::value;
+
+    template <class T> class rfind_t
+    {
+        template <int index> constexpr static auto helperfun()
+        {
+            if constexpr (index < 0)
+            {
+                return -1;
+            }
+            if constexpr (is_same_all_v<getType<index>, T>)
+            {
+                return index;
+            }
+            else
+            {
+                return helperfun<index - 1>();
+            }
+        };
+      public:
+        constexpr static int value = helperfun<sizeof...(Types)-1>();
+    };
+    template <class T> inline constexpr static int rfind = rfind_t<T>::value;
+
+    // template <class T, int index>
+    // class insert_t
+    // {
+    // };
+    // template <class T, int index> using insert = insert_t<T,index>::Type;
+
+    // template <class T, int index>
+    // class divid_t
+    // {
+    //     // typePair<typeVector,typeVector>
+    // };
+    // template <class T, int index> using divid = divid_t<T,index>::Type;
+    
+    // template <typeVector T1, typeVector T2>
+    // class merge_t
+    // {
+    //     // 
+    // };
+    // template <typeVector T1, typeVector T2> using merge = merge_t<T1,T2>::Type;
 };
 
 // 添加值模板别名
-template <auto F>
-inline constexpr size_t get_args_count_v = get_args_count<F>::value;
