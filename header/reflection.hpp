@@ -386,6 +386,62 @@ template <class T> consteval auto get_member_classname_name_pairs()
                 get_member_name<T, I>()}...};
     }(std::make_index_sequence<num_of_number_v<T>>{});
 }
+template <auto fun> class get_fun_name
+{
+    static consteval std::string_view extra_funname_from_classname()
+    {
+        // 查找函数名的开始位置 - 通常在最后一个 :: 之后或整个字符串开头
+        constexpr std::string_view in = get_class_name<get_fun_name<fun>>();
+        constexpr std::size_t left = in.find("&");
+        constexpr std::size_t right = in.find(">");
+        if constexpr ((left != std::string_view::npos) && (right != std::string_view::npos))
+        {
+            constexpr std::size_t start = left + 1; // 跳过&
+            constexpr std::size_t end = right;      // 跳过>
+            return in.substr(start, end - start);
+        }
+        else
+        {
+            throw "Expected '&' in function name";
+        }
+    }
+
+  public:
+    inline static constexpr auto name = extra_funname_from_classname();
+};
+template <auto P> constexpr auto get_fun_name_v = get_fun_name<P>::name;
+
+template <auto callable> class get_return_type;
+
+// 函数指针特化
+template <typename R, typename... Args, R (*F)(Args...)> class get_return_type<F>
+{
+  public:
+    using Type = R;
+};
+
+// 成员函数指针特化
+template <typename R, typename C, typename... Args, R (C::*F)(Args...)> class get_return_type<F>
+{
+  public:
+    using Type = R;
+};
+
+// const成员函数指针特化
+template <typename R, typename C, typename... Args, R (C::*F)(Args...) const>
+class get_return_type<F>
+{
+  public:
+    using Type = R;
+};
+
+// noexcept函数指针特化
+template <typename R, typename... Args, R (*F)(Args...) noexcept> class get_return_type<F>
+{
+  public:
+    using Type = R;
+};
+template <auto fun> using get_return_type_t = get_return_type<fun>::Type;
 
 #define constexpr_try(x)                                                                           \
     if constexpr (requires { x })                                                                  \
@@ -393,3 +449,101 @@ template <class T> consteval auto get_member_classname_name_pairs()
         x                                                                                          \
     }
 #define constexpr_catch else
+
+    // 主模板声明
+    template <auto callable, size_t Index>
+    class get_args_type;
+
+// 函数指针特化
+template <typename R, typename... Args, size_t Index, R (*F)(Args...)>
+class get_args_type<F, Index>
+{
+private:
+    // 使用tuple保存所有参数类型
+    using args_tuple = std::tuple<Args...>;
+    static_assert(Index < sizeof...(Args), "Parameter index out of range");
+    
+public:
+    // 通过tuple_element获取指定位置的类型
+    using type = std::tuple_element_t<Index, args_tuple>;
+};
+
+// 成员函数指针特化
+template <typename R, typename C, typename... Args, size_t Index, R (C::*F)(Args...)>
+class get_args_type<F, Index>
+{
+private:
+    using args_tuple = std::tuple<Args...>;
+    static_assert(Index < sizeof...(Args), "Parameter index out of range");
+    
+public:
+    using type = std::tuple_element_t<Index, args_tuple>;
+};
+
+// const成员函数指针特化
+template <typename R, typename C, typename... Args, size_t Index, R (C::*F)(Args...) const>
+class get_args_type<F, Index>
+{
+private:
+    using args_tuple = std::tuple<Args...>;
+    static_assert(Index < sizeof...(Args), "Parameter index out of range");
+    
+public:
+    using type = std::tuple_element_t<Index, args_tuple>;
+};
+
+// noexcept函数指针特化
+template <typename R, typename... Args, size_t Index, R (*F)(Args...) noexcept>
+class get_args_type<F, Index>
+{
+private:
+    using args_tuple = std::tuple<Args...>;
+    static_assert(Index < sizeof...(Args), "Parameter index out of range");
+    
+public:
+    using type = std::tuple_element_t<Index, args_tuple>;
+};
+
+// 添加帮助模板别名
+template <auto F, size_t Index>
+using get_args_type_t = typename get_args_type<F, Index>::type;
+
+// 获取函数参数数量
+template <auto callable>
+class get_args_count;
+
+// 函数指针特化
+template <typename R, typename... Args, R (*F)(Args...)>
+class get_args_count<F>
+{
+public:
+    static constexpr size_t value = sizeof...(Args);
+};
+
+// 成员函数指针特化
+template <typename R, typename C, typename... Args, R (C::*F)(Args...)>
+class get_args_count<F>
+{
+public:
+    static constexpr size_t value = sizeof...(Args);
+};
+
+// const成员函数指针特化
+template <typename R, typename C, typename... Args, R (C::*F)(Args...) const>
+class get_args_count<F>
+{
+public:
+    static constexpr size_t value = sizeof...(Args);
+};
+
+// noexcept函数指针特化
+template <typename R, typename... Args, R (*F)(Args...) noexcept>
+class get_args_count<F>
+{
+public:
+    static constexpr size_t value = sizeof...(Args);
+};
+
+// 添加值模板别名
+template <auto F>
+inline constexpr size_t get_args_count_v = get_args_count<F>::value;

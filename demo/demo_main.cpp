@@ -47,6 +47,7 @@
 #include <functional>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 class stdiolistener : public co_async
 {
@@ -75,12 +76,21 @@ class stdiolistener : public co_async
     }
 };
 
+int testfun(int a, int b)
+{
+}
+
 int main()
 {
-    stdiolistener a;
-    a.on_user_input.connect([]() { std::cout << "get something but dont care: " << '\n'; });
-    a.on_exit.connect([]() { exit(0); });
-    auto& corus = Co_Start_Manager::getInstance();
-    corus.getManager().add(a);
-    corus.start();
+    // stdiolistener a;
+    // a.on_user_input.connect([](std::string_view in)
+    //                         { std::cout << "get something: " << in << '\n'; });
+    // a.on_exit.connect([]() { exit(0); });
+    // auto& corus = Co_Start_Manager::getInstance();
+    // corus.getManager().add(a);
+    // corus.start();
+    get_return_type_t<testfun> b = 0;
+    get_args_type_t<testfun, 0> a = 0;
+    get_args_type_t<testfun, 1> c = 0;
+    std::cout << b;
 }
