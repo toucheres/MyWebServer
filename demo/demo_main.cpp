@@ -41,16 +41,11 @@
 
 #include "corutine.hpp"
 #include "file.h"
-#include "reflection.hpp"
 #include "signal_slots.hpp"
 #include <cstdlib>
-#include <functional>
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <tuple>
-#include <utility>
-#include <vector>
 class stdiolistener : public co_async, enable_auto_remove_slots
 {
   public:
