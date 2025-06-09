@@ -1,4 +1,5 @@
 #pragma once
+#include "corutine.hpp"
 #include "reflection.hpp"
 #include <algorithm>
 #include <functional>
@@ -37,15 +38,16 @@ template <class... Args> class signal
     }
 
     // 支持任意可调用对象的connect，自动适配参数数量
-    template <typename Callable, 
-             typename = std::enable_if_t<!std::is_same_v<std::decay_t<Callable>, std::function<void(Args...)>>>>
+    template <typename Callable, typename = std::enable_if_t<!std::is_same_v<
+                                     std::decay_t<Callable>, std::function<void(Args...)>>>>
     void connect(Callable&& callable);
 
     void connect(enable_auto_remove_slots& owner, std::function<void(Args...)>&& callback);
-    
+    void connect(enable_auto_remove_slots&& owner, std::function<void(Args...)>&& callback);
+
     // 支持任意可调用对象的connect，带owner，自动适配参数数量
-    template <typename Callable,
-             typename = std::enable_if_t<!std::is_same_v<std::decay_t<Callable>, std::function<void(Args...)>>>>
+    template <typename Callable, typename = std::enable_if_t<!std::is_same_v<
+                                     std::decay_t<Callable>, std::function<void(Args...)>>>>
     void connect(enable_auto_remove_slots& owner, Callable&& callable);
 };
 
@@ -75,6 +77,14 @@ void signal<Args...>::connect(Callable&& callable)
 
 template <class... Args>
 void signal<Args...>::connect(enable_auto_remove_slots& owner,
+                              std::function<void(Args...)>&& callback)
+{
+    void* owner_ptr = static_cast<void*>(&owner);
+    slots.emplace_back(callback, owner_ptr);
+    owner.on_exit.connect([this, owner_ptr]() { this->remove(owner_ptr); });
+}
+template <class... Args>
+void signal<Args...>::connect(enable_auto_remove_slots&& owner,
                               std::function<void(Args...)>&& callback)
 {
     void* owner_ptr = static_cast<void*>(&owner);

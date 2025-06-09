@@ -41,12 +41,13 @@
 
 #include "corutine.hpp"
 #include "file.h"
+#include "reflection.hpp"
 #include "signal_slots.hpp"
 #include <cstdlib>
 #include <iostream>
 #include <string>
 #include <string_view>
-class stdiolistener : public co_async, enable_auto_remove_slots
+class stdiolistener : public co_async, public enable_auto_remove_slots
 {
   public:
     signal<std::string_view> on_user_input;
@@ -77,6 +78,12 @@ int testfun(int, double)
     std::cout << "hello\n";
     return 0;
 }
+int printfun(auto&& callable)
+{
+    [[maybe_unused]] auto a = get_args_nums(callable);
+    return 0;
+}
+
 class watcher : public enable_auto_remove_slots
 {
   public:
@@ -93,29 +100,23 @@ class watcher : public enable_auto_remove_slots
 
 int main()
 {
-    // stdiolistener a;
-    // a.on_user_input.connect([](std::string_view in)
-    //                         { std::cout << "get something: " << in << '\n'; });
-    // a.on_exit.connect([]() { exit(0); });
-    // auto& corus = Co_Start_Manager::getInstance();
-    // corus.getManager().add(a);
-    // corus.start();
-    // std::cout << b;
-    // []<std::size_t... I>(std::index_sequence<I...>) { testfun(get_args_type<testfun, I>{}...); }(
-    //     std::make_index_sequence<get_args_count_v<testfun>>{});
-    stdiolistener a;
+    stdiolistener listener;
+    auto pa = new enable_auto_remove_slots;
+    auto pb = new enable_auto_remove_slots;
+    auto pc = new enable_auto_remove_slots;
     auto ptr_watch = new watcher{};
-    a.on_user_input.connect(*ptr_watch, [ptr_watch]() { ptr_watch->fun(); });
-    a.on_user_input.connect(
-        [ptr_watch](std::string_view in)
-        {
-            if (in == "del\n")
-            {
-                delete ptr_watch;
-                std::cout << "ptr_watch deleted\n";
-            };
-        });
+    listener.on_user_input.connect(*ptr_watch, [ptr_watch]() { ptr_watch->fun(); });
+    listener.on_user_input.connect(*ptr_watch,
+                                   [ptr_watch](std::string_view in)
+                                   {
+                                       if (in == "del\n")
+                                       {
+                                           delete ptr_watch;
+                                           std::cout << "ptr_watch deleted\n";
+                                       };
+                                   });
     auto& corus = Co_Start_Manager::getInstance();
-    corus.getManager().add(a);
+    printfun([](int, int, int) {});
+    corus.getManager().add(listener);
     corus.start();
 }

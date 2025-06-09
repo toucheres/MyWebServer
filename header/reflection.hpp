@@ -6,6 +6,141 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+
+// 函数特性提取工具 - 移到文件开头解决依赖顺序问题
+namespace function_traits_detail
+{
+    // 获取函数的参数数量和类型
+    template <typename T> struct function_traits;
+
+    // 普通函数
+    template <typename R, typename... Args> struct function_traits<R(Args...)>
+    {
+        static constexpr std::size_t arity = sizeof...(Args);
+        using result_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
+
+    // 函数指针
+    template <typename R, typename... Args>
+    struct function_traits<R (*)(Args...)> : function_traits<R(Args...)>
+    {
+    };
+
+    // 成员函数指针
+    template <typename C, typename R, typename... Args>
+    struct function_traits<R (C::*)(Args...)> : function_traits<R(Args...)>
+    {
+    };
+
+    // const 成员函数指针
+    template <typename C, typename R, typename... Args>
+    struct function_traits<R (C::*)(Args...) const> : function_traits<R(Args...)>
+    {
+    };
+
+    // std::function
+    template <typename R, typename... Args>
+    struct function_traits<std::function<R(Args...)>> : function_traits<R(Args...)>
+    {
+    };
+
+    // lambda和可调用对象
+    template <typename F> struct function_traits
+    {
+      private:
+        using call_type = function_traits<decltype(&F::operator())>;
+
+      public:
+        static constexpr std::size_t arity = call_type::arity;
+        using result_type = typename call_type::result_type;
+        using args_tuple = typename call_type::args_tuple;
+    };
+
+    // 移除引用和cv限定符
+    template <typename F> struct function_traits<F&> : function_traits<F>
+    {
+    };
+
+    template <typename F> struct function_traits<F&&> : function_traits<F>
+    {
+    };
+
+    // 辅助函数：前N个参数调用
+    template <typename F, typename Tuple, std::size_t... I>
+    auto call_with_first_n_args_impl(F&& f, Tuple&& t, std::index_sequence<I...>)
+    {
+        return f(std::get<I>(std::forward<Tuple>(t))...);
+    }
+
+    template <typename F, typename Tuple> auto call_with_first_n_args(F&& f, Tuple&& t)
+    {
+        constexpr std::size_t f_arity = function_traits<std::decay_t<F>>::arity;
+        constexpr std::size_t tuple_size = std::tuple_size_v<std::decay_t<Tuple>>;
+        constexpr std::size_t valid_args = (f_arity < tuple_size) ? f_arity : tuple_size;
+
+        return call_with_first_n_args_impl(std::forward<F>(f), std::forward<Tuple>(t),
+                                           std::make_index_sequence<valid_args>{});
+    }
+} // namespace function_traits_detail
+
+// 提供简便的别名以便外部使用
+template <typename T> using function_traits = function_traits_detail::function_traits<T>;
+
+template <typename F, typename Tuple> auto call_with_first_n_args(F&& f, Tuple&& t)
+{
+    return function_traits_detail::call_with_first_n_args(std::forward<F>(f),
+                                                          std::forward<Tuple>(t));
+}
+
+// 函数反射工具 - 扩展对可调用对象的支持
+namespace callable_reflection
+{
+    // 获取可调用对象的参数数量
+    template <typename F> constexpr std::size_t get_args_nums(F&&)
+    {
+        return function_traits<std::decay_t<F>>::arity;
+    }
+
+    // 获取可调用对象的参数类型
+    template <std::size_t N, typename F>
+    using arg_type_t =
+        std::tuple_element_t<N, typename function_traits<std::decay_t<F>>::args_tuple>;
+
+    // 获取可调用对象的返回类型
+    template <typename F>
+    using return_type_t = typename function_traits<std::decay_t<F>>::result_type;
+
+    // 获取所有参数类型作为元组
+    template <typename F>
+    using args_tuple_t = typename function_traits<std::decay_t<F>>::args_tuple;
+
+    // 是否为成员函数
+    template <typename F> struct is_member_function
+    {
+        static constexpr bool value = false;
+    };
+
+    template <typename C, typename R, typename... Args> struct is_member_function<R (C::*)(Args...)>
+    {
+        static constexpr bool value = true;
+        using class_type = C;
+    };
+
+    template <typename C, typename R, typename... Args>
+    struct is_member_function<R (C::*)(Args...) const>
+    {
+        static constexpr bool value = true;
+        using class_type = C;
+    };
+
+    // 统一的参数数量获取实现（类型版本）
+    template <typename F> struct args_count
+    {
+        static constexpr std::size_t value = function_traits<F>::arity;
+    };
+} // namespace callable_reflection
+
 class AnyType
 {
   public:
@@ -245,7 +380,7 @@ inline consteval std::string_view extract_class_name(std::string_view func_name)
     if (with_pos != std::string_view::npos)
     {
         std::size_t start = with_pos + 9; // "with T = "的长度
-        std::size_t end = func_name.find(']', start);
+        std::size_t end = func_name.rfind(']', start);
         if (end == std::string_view::npos)
         {
             end = func_name.find(';', start);
@@ -262,14 +397,14 @@ inline consteval std::string_view extract_class_name(std::string_view func_name)
     if (t_eq_pos != std::string_view::npos)
     {
         std::size_t start = t_eq_pos + 4; // "T = "的长度
-        std::size_t end = func_name.find(']', start);
+        std::size_t end = func_name.rfind(']', start);
         if (end == std::string_view::npos)
         {
             end = func_name.find(';', start);
         }
         if (end == std::string_view::npos)
         {
-            end = func_name.size();
+            end = func_name.size() - 1;
         }
         return func_name.substr(start, end - start);
     }
@@ -455,7 +590,8 @@ template <auto fun> using get_return_type_t = get_return_type<fun>::Type;
 template <auto callable, size_t Index> class get_args_type_t;
 
 // 函数指针特化
-template <typename R, typename... Args, size_t Index, R (*F)(Args...)> class get_args_type_t<F, Index>
+template <typename R, typename... Args, size_t Index, R (*F)(Args...)>
+class get_args_type_t<F, Index>
 {
   private:
     // 使用tuple保存所有参数类型
@@ -506,18 +642,18 @@ class get_args_type_t<F, Index>
 // 添加帮助模板别名
 template <auto F, size_t Index> using get_args_type = typename get_args_type_t<F, Index>::type;
 
-// 获取函数参数数量
-template <auto callable> class get_args_count;
+// 获取函数参数数量 - 非类型模板参数版本
+template <auto callable> class get_args_count_t; // 保留类模板版本
 
 // 函数指针特化
-template <typename R, typename... Args, R (*F)(Args...)> class get_args_count<F>
+template <typename R, typename... Args, R (*F)(Args...)> class get_args_count_t<F>
 {
   public:
     static constexpr size_t value = sizeof...(Args);
 };
 
 // 成员函数指针特化
-template <typename R, typename C, typename... Args, R (C::*F)(Args...)> class get_args_count<F>
+template <typename R, typename C, typename... Args, R (C::*F)(Args...)> class get_args_count_t<F>
 {
   public:
     static constexpr size_t value = sizeof...(Args);
@@ -525,242 +661,68 @@ template <typename R, typename C, typename... Args, R (C::*F)(Args...)> class ge
 
 // const成员函数指针特化
 template <typename R, typename C, typename... Args, R (C::*F)(Args...) const>
-class get_args_count<F>
+class get_args_count_t<F>
 {
   public:
     static constexpr size_t value = sizeof...(Args);
 };
 
 // noexcept函数指针特化
-template <typename R, typename... Args, R (*F)(Args...) noexcept> class get_args_count<F>
+template <typename R, typename... Args, R (*F)(Args...) noexcept> class get_args_count_t<F>
 {
   public:
     static constexpr size_t value = sizeof...(Args);
 };
-template <auto F> inline constexpr size_t get_args_count_v = get_args_count<F>::value;
 
-template <class T1, class T2> class typePair
+// 非模板运行时函数形式 - 使用不同的名称避免与类模板冲突
+template <typename F> constexpr std::size_t get_args_count_by_ptr(F&& f)
 {
-  public:
-    using first = T1;
-    using secend = T2;
-};
-
-template <class... Types> class typeVector
-{
-  public:
-    template <int index> class getType_t
-    {
-      public:
-        // 使用 std::tuple_element_t 直接获取类型，无需创建实际的 tuple 实例
-        using Type = std::tuple_element_t<index, std::tuple<Types...>>;
-    };
-    template <int index> using getType = getType_t<index>::Type;
-
-    template <class T> class push_back_t
-    {
-      public:
-        using Type = typeVector<Types..., T>;
-    };
-    template <class T> using push_back = push_back_t<T>::Type;
-
-    template <class T> class push_front_t
-    {
-      public:
-        using Type = typeVector<T, Types...>;
-    };
-    template <class T> using push_front = push_front_t<T>::Type;
-
-    template <class T> class find_t
-    {
-        template <int index> constexpr static auto helperfun()
-        {
-            if constexpr (index >= sizeof...(Types))
-            {
-                return -1;
-            }
-            else
-            { // 先检查索引，再访问元素
-                using CurrentType = getType<index>;
-                if constexpr (is_same_all_v<CurrentType, T>)
-                {
-                    return index;
-                }
-                else
-                {
-                    return helperfun<index + 1>();
-                }
-            }
-        };
-
-      public:
-        constexpr static int value = helperfun<0>();
-    };
-    template <class T> inline constexpr static int find = find_t<T>::value;
-
-    template <class T> class rfind_t
-    {
-        template <int index> constexpr static auto helperfun()
-        {
-            if constexpr (index < 0)
-            {
-                return -1; // 未找到，返回-1
-            }
-            else
-            {
-                // 先检查索引，再访问元素
-                using CurrentType = getType<index>;
-                if constexpr (is_same_all_v<CurrentType, T>)
-                {
-                    return index;
-                }
-                else
-                {
-                    return helperfun<index - 1>();
-                }
-            }
-        };
-
-      public:
-        constexpr static int value = helperfun<sizeof...(Types) - 1>();
-    };
-    template <class T> inline constexpr static int rfind = rfind_t<T>::value;
-
-    template <class T, int index> class insert_t
-    {
-        // 递归实现，将typeVector分割成前后两部分，然后在中间插入T
-        template <int i, class... Front, class... Back>
-        static auto helper(typeVector<Front...>, typeVector<Back...>)
-        {
-            if constexpr (i == 0)
-                return typeVector<T, Back...>{};
-            else if constexpr (i == index)
-                return typeVector<Front..., T, Back...>{};
-            else
-                return helper<i - 1>(
-                    typeVector<Front..., typename typeVector<Back...>::template getType<0>>(),
-                    typename typeVector<Back...>::template push_front<void>::template push_back<
-                        void>());
-        }
-
-      public:
-        using Type =
-            decltype(helper<0>(std::declval<typeVector<>>(), std::declval<typeVector<Types...>>()));
-    };
-    template <class T, int index> using insert = insert_t<T, index>::Type;
-
-    template <int index> class divid_t
-    {
-        // 递归实现，将typeVector分割成前index个元素和剩余元素
-        template <typename, typename, typename> struct helper_impl;
-
-        template <typename Tuple, std::size_t... I1, std::size_t... I2>
-        struct helper_impl<Tuple, std::index_sequence<I1...>, std::index_sequence<I2...>>
-        {
-            using first_type = typeVector<std::tuple_element_t<I1, Tuple>...>;
-            using second_type = typeVector<std::tuple_element_t<I2 + index, Tuple>...>;
-            using type = typePair<first_type, second_type>;
-        };
-
-      public:
-        using tuple_type = std::tuple<Types...>;
-        static constexpr std::size_t total_size = sizeof...(Types);
-
-        // 确保索引不超出范围
-        static_assert(index <= total_size, "Index out of range in divid_t");
-
-        using Type = typename helper_impl<tuple_type, std::make_index_sequence<index>,
-                                          std::make_index_sequence<total_size - index>>::type;
-    };
-    template <int index> using divid = divid_t<index>::Type;
-
-    template <typename OtherTypeVector> class merge_t;
-
-    template <typename... T1s> class merge_t<typeVector<T1s...>>
-    {
-      public:
-        using Type = typeVector<Types..., T1s...>;
-    };
-
-    template <class OtherTypeVector> using merge = typename merge_t<OtherTypeVector>::Type;
-};
-
-// 函数特性提取工具 - 从signal_slots.hpp移入
-namespace function_traits_detail {
-    // 获取函数的参数数量和类型
-    template<typename T>
-    struct function_traits;
-
-    // 普通函数
-    template<typename R, typename... Args>
-    struct function_traits<R(Args...)> {
-        static constexpr std::size_t arity = sizeof...(Args);
-        using result_type = R;
-        using args_tuple = std::tuple<Args...>;
-    };
-
-    // 函数指针
-    template<typename R, typename... Args>
-    struct function_traits<R(*)(Args...)> : function_traits<R(Args...)> {};
-
-    // 成员函数指针
-    template<typename C, typename R, typename... Args>
-    struct function_traits<R(C::*)(Args...)> : function_traits<R(Args...)> {};
-
-    // const 成员函数指针
-    template<typename C, typename R, typename... Args>
-    struct function_traits<R(C::*)(Args...) const> : function_traits<R(Args...)> {};
-
-    // std::function
-    template<typename R, typename... Args>
-    struct function_traits<std::function<R(Args...)>> : function_traits<R(Args...)> {};
-
-    // lambda和可调用对象
-    template<typename F>
-    struct function_traits {
-    private:
-        using call_type = function_traits<decltype(&F::operator())>;
-    public:
-        static constexpr std::size_t arity = call_type::arity;
-        using result_type = typename call_type::result_type;
-        using args_tuple = typename call_type::args_tuple;
-    };
-
-    // 移除引用和cv限定符
-    template<typename F>
-    struct function_traits<F&> : function_traits<F> {};
-    
-    template<typename F>
-    struct function_traits<F&&> : function_traits<F> {};
-
-    // 辅助函数：前N个参数调用
-    template<typename F, typename Tuple, std::size_t... I>
-    auto call_with_first_n_args_impl(F&& f, Tuple&& t, std::index_sequence<I...>) {
-        return f(std::get<I>(std::forward<Tuple>(t))...);
-    }
-
-    template<typename F, typename Tuple>
-    auto call_with_first_n_args(F&& f, Tuple&& t) {
-        constexpr std::size_t f_arity = function_traits<std::decay_t<F>>::arity;
-        constexpr std::size_t tuple_size = std::tuple_size_v<std::decay_t<Tuple>>;
-        constexpr std::size_t valid_args = (f_arity < tuple_size) ? f_arity : tuple_size;
-        
-        return call_with_first_n_args_impl(
-            std::forward<F>(f),
-            std::forward<Tuple>(t),
-            std::make_index_sequence<valid_args>{}
-        );
-    }
+    return callable_reflection::get_args_nums(std::forward<F>(f));
 }
 
-// 提供简便的别名以便外部使用
-template<typename T>
-using function_traits = function_traits_detail::function_traits<T>;
+// 类型模板参数版本 - 使用不同的命名避免冲突
+template <typename F> struct get_args_count_type
+{
+    static constexpr std::size_t value = callable_reflection::args_count<F>::value;
+};
 
-template<typename F, typename Tuple>
-auto call_with_first_n_args(F&& f, Tuple&& t) {
-    return function_traits_detail::call_with_first_n_args(
-        std::forward<F>(f), 
-        std::forward<Tuple>(t)
-    );
+// 变量模板版本 - 非类型参数
+template <auto F> inline constexpr size_t get_args_count = get_args_count_t<F>::value;
+
+// 变量模板版本 - 类型参数
+template <typename F>
+inline constexpr std::size_t get_args_count_type_v = get_args_count_type<F>::value;
+
+// 简便接口 - 直接接受可调用对象
+template <typename F> constexpr std::size_t get_args_nums(F&& f)
+{
+    return callable_reflection::get_args_nums(std::forward<F>(f));
 }
+
+template <std::size_t N, typename F> using get_arg_type_t = callable_reflection::arg_type_t<N, F>;
+
+template <typename F> using get_return_type_of = callable_reflection::return_type_t<F>;
+
+template <typename F> using get_args_tuple_t = callable_reflection::args_tuple_t<F>;
+
+template <typename F>
+inline constexpr bool is_member_function_v =
+    callable_reflection::is_member_function<std::decay_t<F>>::value;
+
+// 检查参数类型兼容性
+template <typename F, typename... Args>
+inline constexpr bool can_be_called_with = []()
+{
+    if constexpr (sizeof...(Args) != callable_reflection::get_args_nums(std::declval<F>()))
+    {
+        return false;
+    }
+    else
+    {
+        using FArgs = callable_reflection::args_tuple_t<F>;
+        return []<std::size_t... I>(std::index_sequence<I...>)
+        {
+            return (std::is_convertible_v<Args, std::tuple_element_t<I, FArgs>> && ...);
+        }(std::make_index_sequence<sizeof...(Args)>{});
+    }
+}();
