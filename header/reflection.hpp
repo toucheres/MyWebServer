@@ -451,10 +451,10 @@ template <auto fun> using get_return_type_t = get_return_type<fun>::Type;
 #define constexpr_catch else
 
 // 主模板声明
-template <auto callable, size_t Index> class get_args_type;
+template <auto callable, size_t Index> class get_args_type_t;
 
 // 函数指针特化
-template <typename R, typename... Args, size_t Index, R (*F)(Args...)> class get_args_type<F, Index>
+template <typename R, typename... Args, size_t Index, R (*F)(Args...)> class get_args_type_t<F, Index>
 {
   private:
     // 使用tuple保存所有参数类型
@@ -468,7 +468,7 @@ template <typename R, typename... Args, size_t Index, R (*F)(Args...)> class get
 
 // 成员函数指针特化
 template <typename R, typename C, typename... Args, size_t Index, R (C::*F)(Args...)>
-class get_args_type<F, Index>
+class get_args_type_t<F, Index>
 {
   private:
     using args_tuple = std::tuple<Args...>;
@@ -480,7 +480,7 @@ class get_args_type<F, Index>
 
 // const成员函数指针特化
 template <typename R, typename C, typename... Args, size_t Index, R (C::*F)(Args...) const>
-class get_args_type<F, Index>
+class get_args_type_t<F, Index>
 {
   private:
     using args_tuple = std::tuple<Args...>;
@@ -492,7 +492,7 @@ class get_args_type<F, Index>
 
 // noexcept函数指针特化
 template <typename R, typename... Args, size_t Index, R (*F)(Args...) noexcept>
-class get_args_type<F, Index>
+class get_args_type_t<F, Index>
 {
   private:
     using args_tuple = std::tuple<Args...>;
@@ -503,7 +503,7 @@ class get_args_type<F, Index>
 };
 
 // 添加帮助模板别名
-template <auto F, size_t Index> using get_args_type_t = typename get_args_type<F, Index>::type;
+template <auto F, size_t Index> using get_args_type = typename get_args_type_t<F, Index>::type;
 
 // 获取函数参数数量
 template <auto callable> class get_args_count;
@@ -683,3 +683,14 @@ template <class... Types> class typeVector
 
     template <class OtherTypeVector> using merge = typename merge_t<OtherTypeVector>::Type;
 };
+template <auto callable> class get_args_types_t
+{
+    public:
+      using Type = decltype([](){
+        return []<std::size_t... I>(std::index_sequence<I...>) -> auto
+        {
+            return typeVector<typename get_args_type_t<callable,I>::type...>{};
+        }( std::make_index_sequence<get_args_count_v<callable>>() );
+      }());
+};
+template <auto callable> using get_args_types = get_args_types_t<callable>::Type;

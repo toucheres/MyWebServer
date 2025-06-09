@@ -48,12 +48,13 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <utility>
 #include <vector>
-class stdiolistener : public co_async
+class stdiolistener : public co_async, enable_auto_remove_slots
 {
   public:
     signal<std::string_view> on_user_input;
-    signal<> on_exit;
     virtual EventStatus eventGo()
     {
         auto& stdaio = async_in_out::getInstance();
@@ -76,9 +77,24 @@ class stdiolistener : public co_async
     }
 };
 
-int testfun(int a, int b)
+int testfun(int, double)
 {
+    std::cout << "hello\n";
+    return 0;
 }
+class watcher : public enable_auto_remove_slots
+{
+  public:
+    int state = 3;
+    void fun()
+    {
+        std::cout << "state: " << state << '\n';
+    }
+    ~watcher()
+    {
+        std::cout << "watcher distruct\n";
+    }
+};
 
 int main()
 {
@@ -90,7 +106,21 @@ int main()
     // corus.getManager().add(a);
     // corus.start();
     // std::cout << b;
-    constexpr int a =
-        typeVector<int, long, long long>::insert<double, 1>::divid<1>::secend::find<double>;
-    std::cout << a << '\n';
+    // []<std::size_t... I>(std::index_sequence<I...>) { testfun(get_args_type<testfun, I>{}...); }(
+    //     std::make_index_sequence<get_args_count_v<testfun>>{});
+    stdiolistener a;
+    auto ptr_watch = new watcher{};
+    a.on_user_input.connect(*ptr_watch, [ptr_watch]() { ptr_watch->fun(); });
+    a.on_user_input.connect(
+        [ptr_watch](std::string_view in)
+        {
+            if (in == "del\n")
+            {
+                delete ptr_watch;
+                std::cout << "ptr_watch deleted\n";
+            };
+        });
+    auto& corus = Co_Start_Manager::getInstance();
+    corus.getManager().add(a);
+    corus.start();
 }
