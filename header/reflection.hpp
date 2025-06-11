@@ -579,6 +579,151 @@ template <typename R, typename... Args, R (*F)(Args...) noexcept> class get_retu
 };
 template <auto fun> using get_return_type_t = get_return_type<fun>::Type;
 
+template <class T1, class T2> class typePair
+{
+  public:
+    using first = T1;
+    using secend = T2;
+};
+
+template <class... Types> class typeVector
+{
+  public:
+    template <int index> class getType_t
+    {
+      public:
+        // 使用 std::tuple_element_t 直接获取类型，无需创建实际的 tuple 实例
+        using Type = std::tuple_element_t<index, std::tuple<Types...>>;
+    };
+    template <int index> using getType = getType_t<index>::Type;
+
+    template <class T> class push_back_t
+    {
+      public:
+        using Type = typeVector<Types..., T>;
+    };
+    template <class T> using push_back = push_back_t<T>::Type;
+
+    template <class T> class push_front_t
+    {
+      public:
+        using Type = typeVector<T, Types...>;
+    };
+    template <class T> using push_front = push_front_t<T>::Type;
+
+    template <class T> class find_t
+    {
+        template <int index> constexpr static auto helperfun()
+        {
+            if constexpr (index >= sizeof...(Types))
+            {
+                return -1;
+            }
+            else
+            { // 先检查索引，再访问元素
+                using CurrentType = getType<index>;
+                if constexpr (is_same_all_v<CurrentType, T>)
+                {
+                    return index;
+                }
+                else
+                {
+                    return helperfun<index + 1>();
+                }
+            }
+        };
+
+      public:
+        constexpr static int value = helperfun<0>();
+    };
+    template <class T> inline constexpr static int find = find_t<T>::value;
+
+    template <class T> class rfind_t
+    {
+        template <int index> constexpr static auto helperfun()
+        {
+            if constexpr (index < 0)
+            {
+                return -1; // 未找到，返回-1
+            }
+            else
+            {
+                // 先检查索引，再访问元素
+                using CurrentType = getType<index>;
+                if constexpr (is_same_all_v<CurrentType, T>)
+                {
+                    return index;
+                }
+                else
+                {
+                    return helperfun<index - 1>();
+                }
+            }
+        };
+
+      public:
+        constexpr static int value = helperfun<sizeof...(Types) - 1>();
+    };
+    template <class T> inline constexpr static int rfind = rfind_t<T>::value;
+
+    template <class T, int index> class insert_t
+    {
+        // 递归实现，将typeVector分割成前后两部分，然后在中间插入T
+        template <int i, class... Front, class... Back>
+        static auto helper(typeVector<Front...>, typeVector<Back...>)
+        {
+            if constexpr (i == 0)
+                return typeVector<T, Back...>{};
+            else if constexpr (i == index)
+                return typeVector<Front..., T, Back...>{};
+            else
+                return helper<i - 1>(
+                    typeVector<Front..., typename typeVector<Back...>::template getType<0>>(),
+                    typename typeVector<Back...>::template push_front<void>::template push_back<
+                        void>());
+        }
+
+      public:
+        using Type =
+            decltype(helper<0>(std::declval<typeVector<>>(), std::declval<typeVector<Types...>>()));
+    };
+    template <class T, int index> using insert = insert_t<T, index>::Type;
+
+    template <int index> class divid_t
+    {
+        // 递归实现，将typeVector分割成前index个元素和剩余元素
+        template <typename, typename, typename> struct helper_impl;
+
+        template <typename Tuple, std::size_t... I1, std::size_t... I2>
+        struct helper_impl<Tuple, std::index_sequence<I1...>, std::index_sequence<I2...>>
+        {
+            using first_type = typeVector<std::tuple_element_t<I1, Tuple>...>;
+            using second_type = typeVector<std::tuple_element_t<I2 + index, Tuple>...>;
+            using type = typePair<first_type, second_type>;
+        };
+
+      public:
+        using tuple_type = std::tuple<Types...>;
+        static constexpr std::size_t total_size = sizeof...(Types);
+
+        // 确保索引不超出范围
+        static_assert(index <= total_size, "Index out of range in divid_t");
+
+        using Type = typename helper_impl<tuple_type, std::make_index_sequence<index>,
+                                          std::make_index_sequence<total_size - index>>::type;
+    };
+    template <int index> using divid = divid_t<index>::Type;
+
+    template <typename OtherTypeVector> class merge_t;
+
+    template <typename... T1s> class merge_t<typeVector<T1s...>>
+    {
+      public:
+        using Type = typeVector<Types..., T1s...>;
+    };
+
+    template <class OtherTypeVector> using merge = typename merge_t<OtherTypeVector>::Type;
+};
 #define constexpr_try(x)                                                                           \
     if constexpr (requires { x })                                                                  \
     {                                                                                              \
@@ -726,3 +871,49 @@ inline constexpr bool can_be_called_with = []()
         }(std::make_index_sequence<sizeof...(Args)>{});
     }
 }();
+template <class... args> auto constexpr get_args_types__(auto&& callable)
+{
+    if constexpr (requires { callable(std::declval<args>()...); })
+    {
+        return get_args_types__<args..., AnyType>(callable);
+    }
+    else
+    {
+        // 返回一个类型向量，包含除了最后一个AnyType之外的所有参数类型
+        return typeVector<std::remove_cvref_t<args>...>{};
+    }
+}
+template <class callable> decltype(auto) constexpr get_args_types_()
+{
+    // 添加对 lambda std::function的支持 - 检测 operator() 成员函数
+    if constexpr (requires { &std::remove_reference_t<callable>::operator(); })
+    {
+        using lambda_type = decltype(&std::remove_reference_t<callable>::operator());
+        using args_tuple = typename function_traits<lambda_type>::args_tuple;
+        return []<std::size_t... I>(std::index_sequence<I...>)
+        {
+            return typeVector<std::tuple_element_t<I, args_tuple>...>{};
+        }(std::make_index_sequence<std::tuple_size_v<args_tuple>>{});
+    }
+    // 保留其他分支
+    else if constexpr (requires { std::declval<callable>()(); })
+    {
+        return get_args_types__<AnyType>(std::declval<callable>());
+    }
+    else if constexpr (std::is_function_v<std::remove_pointer_t<callable>> ||
+                       std::is_member_function_pointer_v<callable>)
+    {
+        // 使用reflection.hpp中的function_traits处理函数指针
+        using args_tuple = typename function_traits<callable>::args_tuple;
+        return []<std::size_t... I>(std::index_sequence<I...>)
+        {
+            return typeVector<std::tuple_element_t<I, args_tuple>...>{};
+        }(std::make_index_sequence<std::tuple_size_v<args_tuple>>{});
+    }
+    else
+    {
+        return typeVector<>{};
+    }
+}
+
+template <class callable_t> using get_args_types = decltype(get_args_types_<callable_t>());

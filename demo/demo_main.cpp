@@ -41,7 +41,8 @@
 
 #include "corutine.hpp"
 #include "file.h"
-#include "reflection.hpp"
+#include "http.h"
+#include "mysqlHandle.h"
 #include "signal_slots.hpp"
 #include <cstdlib>
 #include <iostream>
@@ -73,50 +74,15 @@ class stdiolistener : public co_async, public enable_auto_remove_slots
     }
 };
 
-int testfun(int, double)
-{
-    std::cout << "hello\n";
-    return 0;
-}
-int printfun(auto&& callable)
-{
-    [[maybe_unused]] auto a = get_args_nums(callable);
-    return 0;
-}
-
-class watcher : public enable_auto_remove_slots
-{
-  public:
-    int state = 3;
-    void fun()
-    {
-        std::cout << "state: " << state << '\n';
-    }
-    ~watcher()
-    {
-        std::cout << "watcher distruct\n";
-    }
-};
-
+HttpServer server;
+MySQLHandle sql{"localhost", "webserver", "WebServer@2025", "chat_db"};
 int main()
 {
-    stdiolistener listener;
-    auto pa = new enable_auto_remove_slots;
-    auto pb = new enable_auto_remove_slots;
-    auto pc = new enable_auto_remove_slots;
-    auto ptr_watch = new watcher{};
-    listener.on_user_input.connect(*ptr_watch, [ptr_watch]() { ptr_watch->fun(); });
-    listener.on_user_input.connect(*ptr_watch,
-                                   [ptr_watch](std::string_view in)
-                                   {
-                                       if (in == "del\n")
-                                       {
-                                           delete ptr_watch;
-                                           std::cout << "ptr_watch deleted\n";
-                                       };
-                                   });
-    auto& corus = Co_Start_Manager::getInstance();
-    printfun([](int, int, int) {});
-    corus.getManager().add(listener);
-    corus.start();
+    auto ret = sql.query("select*from users");
+    for (int i = 0; i < ret->getRowCount(); i++)
+    {
+        auto row = ret->fetchRow();
+        std::cout << "id: " << row[0] << " name: " << row[1] << " password: " << row[2]
+                  << " created_at: " << row[3] << '\n';
+    }
 }
