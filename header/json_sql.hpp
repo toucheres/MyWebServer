@@ -1,4 +1,5 @@
 #pragma once
+#include "mysqlHandle.h"
 #include "reflection.hpp"
 #include "string"
 
@@ -60,6 +61,43 @@ struct timestamp : only_content
 {
     std::string content;
 };
-class enable_sql
+
+// 解析
+template <class member> struct sql_member_imf
 {
+    // Key<Pri, int> id
+    // Key<UNI, varchar<50>> username
+    // varchar<100> password
+    // Null<true, timestamp> created_at
+    using Type = decltype([]() {
+        // ...
+    }());
+    std::string_view Field()
+    {
+        //
+    }
+    // ...
+    constexpr std::string_view Type_name();
+    constexpr std::string_view Null();
+    constexpr std::string_view Key();
+    constexpr std::string_view Default();
+    constexpr std::string_view Extra();
+};
+template <class T> class data_views
+{
+    // ...
+    auto change_all(T to);
+    auto change_if(std::function<bool(const T*)> callback, T to);
+    auto delete_all(T to);
+    auto delete_if(std::function<bool(const T*)> callback);
+    auto get_all();
+    auto get_if(std::function<bool(const T*)> callback);
+};
+
+template <class T> struct struct_MySql
+{
+    MySQLHandle& connection;
+    auto auto_create_table();
+    auto delete_this_table();
+    data_views<T> find();
 };

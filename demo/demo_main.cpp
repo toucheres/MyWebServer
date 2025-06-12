@@ -94,18 +94,9 @@ struct users
 };
 HttpServer server;
 MySQLHandle sql{"localhost", "webserver", "WebServer@2025", "chat_db"};
+using fff =int;
 int main()
 {
-    // auto ret = sql.query("select*from users");
-    // for (auto& row : ret->getRows())
-    // {
-    //     std::cout << "id: " << row[0] << " name: " << row[1] << " password: " << row[2]
-    //               << " created_at: " << row[3] << '\n';
-    // }
-
-    // std::cout << json::from(t) << '\n';
-    // json::defultOpt.flatten_single_member = true;
-    // std::cout << json::from(t) << '\n';
     for (auto a : get_member_classname_name_pairs<users>())
     {
         std::cout << a.first << " " << a.second << '\n';
