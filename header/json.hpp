@@ -10,10 +10,20 @@ class json
 {
   public:
     std::string content = "";
-    template <Aggregate T> static json from(T in)
+    
+    // 添加配置选项
+    struct options {
+        bool flatten_single_member;
+    };
+    static inline options defultOpt = options{
+        .flatten_single_member = false,
+    };
+
+    template <Aggregate T> static json from(T in, options opts = defultOpt)
     {
-        return json(in);
+        return json(in, opts, true); // 明确指定为根级别
     }
+    
     template <Aggregate T> static json to(json in)
     {
         return from_json<T>(in.content);
@@ -24,16 +34,56 @@ class json
     {
         return os << j.content;
     }
-    template <Aggregate T> json(T in)
+    // 修改构造函数，添加选项参数
+    template <Aggregate T> json(T in, options opts = {}, bool is_root = true)
+    {
+        // 检查类型是否只有一个成员
+        constexpr size_t member_count = get_member_count_v<T>;
+
+        // 只有在非根级别且启用扁平化且只有一个成员时才进行扁平化
+        if (opts.flatten_single_member && member_count == 1 && !is_root) {
+            // 单成员情况：直接序列化该成员的值
+            visit_each_member(
+                in,
+                [this, opts]<class M, int index>(auto&& arg)
+                {
+                    using ArgType = std::decay_t<decltype(arg)>;
+                    
+                    if constexpr (requires { (std::string) arg; })
+                    {
+                        content = "\"" + (std::string)arg + "\"";
+                    }
+                    else if constexpr (std::is_integral_v<ArgType> || std::is_floating_point_v<ArgType>)
+                    {
+                        content = std::to_string(arg);
+                    }
+                    else if constexpr (requires { std::to_string(arg); })
+                    {
+                        content = "\"" + std::to_string(arg) + "\"";
+                    }
+                    else if constexpr (MeaningfulAggregate<ArgType>)
+                    {
+                        // 递归处理嵌套聚合类型，传递 is_root = false
+                        json nested(arg, opts, false);
+                        content = nested.content;
+                    }
+                });
+        } else {
+            // 正常情况：按原逻辑处理
+            serialize_normal(in, opts);
+        }
+    }
+    
+    // 将原有的序列化逻辑提取为单独方法
+    template <Aggregate T> void serialize_normal(T in, options opts)
     {
         content += "{";
         visit_each_member(
             in,
-            [this]<class M, int index>(auto&& arg)
+            [this, opts]<class M, int index>(auto&& arg)
             {
                 using ArgType = std::decay_t<decltype(arg)>;
 
-                // 添加类型检查和自定义错误信息
                 static_assert(
                     requires { (std::string) arg; } || requires { std::to_string(arg); } ||
                         MeaningfulAggregate<ArgType>,
@@ -45,18 +95,17 @@ class json
                 }
                 else if constexpr (std::is_integral_v<ArgType> || std::is_floating_point_v<ArgType>)
                 {
-                    // 数值类型使用专门的数值处理方法
                     add_number(get_member_names<M>()[index], std::to_string(arg));
                 }
                 else if constexpr (requires { std::to_string(arg); })
                 {
-                    // 其他可以转为字符串但不是数值类型的情况
                     add_string(get_member_names<M>()[index], std::to_string(arg));
                 }
                 else if constexpr (MeaningfulAggregate<ArgType>)
                 {
-                    // 处理嵌套聚合类型
-                    add_object(get_member_names<M>()[index], json(arg).operator std::string());
+                    // 递归处理嵌套聚合类型，传递 is_root = false
+                    json nested(arg, opts, false);
+                    add_object(get_member_names<M>()[index], nested.content);
                 }
                 content += ',';
             });

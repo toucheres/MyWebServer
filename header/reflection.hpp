@@ -917,3 +917,4 @@ template <class callable> decltype(auto) constexpr get_args_types_()
 }
 
 template <class callable_t> using get_args_types = decltype(get_args_types_<callable_t>());
+template <typename T> inline constexpr size_t get_member_count_v = num_of_number_v<T>;

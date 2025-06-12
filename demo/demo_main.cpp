@@ -42,7 +42,10 @@
 #include "corutine.hpp"
 #include "file.h"
 #include "http.h"
+#include "json.hpp"
+#include "json_sql.hpp"
 #include "mysqlHandle.h"
+#include "reflection.hpp"
 #include "signal_slots.hpp"
 #include <cstdlib>
 #include <iostream>
@@ -73,16 +76,38 @@ class stdiolistener : public co_async, public enable_auto_remove_slots
         }
     }
 };
-
+// mysql> describe users;
+// +------------+--------------+------+-----+-------------------+-------------------+
+// | Field      | Type         | Null | Key | Default           | Extra             |
+// +------------+--------------+------+-----+-------------------+-------------------+
+// | id         | int          | NO   | PRI | NULL              | auto_increment    |
+// | username   | varchar(50)  | NO   | UNI | NULL              |                   |
+// | password   | varchar(100) | NO   |     | NULL              |                   |
+// | created_at | timestamp    | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
+// +------------+--------------+------+-----+-------------------+-------------------+
+struct users
+{
+    Key<Pri, int> id;
+    Key<UNI, varchar<50>> username;
+    varchar<100> password;
+    Null<true, timestamp> created_at;
+};
 HttpServer server;
 MySQLHandle sql{"localhost", "webserver", "WebServer@2025", "chat_db"};
 int main()
 {
-    auto ret = sql.query("select*from users");
-    for (int i = 0; i < ret->getRowCount(); i++)
+    // auto ret = sql.query("select*from users");
+    // for (auto& row : ret->getRows())
+    // {
+    //     std::cout << "id: " << row[0] << " name: " << row[1] << " password: " << row[2]
+    //               << " created_at: " << row[3] << '\n';
+    // }
+
+    // std::cout << json::from(t) << '\n';
+    // json::defultOpt.flatten_single_member = true;
+    // std::cout << json::from(t) << '\n';
+    for (auto a : get_member_classname_name_pairs<users>())
     {
-        auto row = ret->fetchRow();
-        std::cout << "id: " << row[0] << " name: " << row[1] << " password: " << row[2]
-                  << " created_at: " << row[3] << '\n';
+        std::cout << a.first << " " << a.second << '\n';
     }
 }
