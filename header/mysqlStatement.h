@@ -20,6 +20,12 @@ public:
     MySQLStatement& bindParam(int paramIndex, double value);
     MySQLStatement& bindParam(int paramIndex, long long value);
     
+    // 为 json_sql.hpp 提供的便利方法
+    bool setString(int paramIndex, const std::string& value);
+    bool setInt(int paramIndex, int value);
+    bool setDouble(int paramIndex, double value);
+    bool setLongLong(int paramIndex, long long value);
+    
     // 执行准备好的语句
     MySQLResultPtr execute();
     
