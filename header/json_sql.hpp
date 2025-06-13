@@ -2,15 +2,138 @@
 #include "mysqlHandle.h"
 #include "reflection.hpp"
 #include "string"
-#include <functional>
+#include <iostream>
 #include <optional>
-#include <sstream>
+#include <string>
 #include <string_view>
 #include <vector>
 
-template <const char* attributes, class type> class with_attributes
+struct describer
 {
+    std::string primerkey;
+    std::string table_name;
+    std::vector<std::string> field_names;
+    std::vector<std::string> field_types;
+    std::vector<std::string> field_constraints;
+    std::vector<bool> skip_on_insert;
+    std::vector<bool> skip_on_update;
+    bool auto_timestamp = true;
+    
+    // 辅助方法
+    size_t field_count() const { return field_names.size(); }
+    
+    bool should_skip_field_on_insert(size_t index) const {
+        return index < skip_on_insert.size() ? skip_on_insert[index] : false;
+    }
+    
+    bool should_skip_field_on_update(size_t index) const {
+        return index < skip_on_update.size() ? skip_on_update[index] : false;
+    }
+    
+    std::string get_field_type(size_t index) const {
+        return index < field_types.size() ? field_types[index] : "TEXT";
+    }
+    
+    std::string get_field_constraint(size_t index) const {
+        return index < field_constraints.size() ? field_constraints[index] : "NOT NULL";
+    }
 };
+
+template <class type> class table_discribe
+{
+public:
+    static describer description;
+    
+    // 获取表名
+    static std::string get_table_name() {
+        if (!description.table_name.empty()) {
+            return description.table_name;
+        }
+        return std::string(get_class_name<type>());
+    }
+    
+    // 获取主键字段名
+    static std::string get_primary_key() {
+        return description.primerkey;
+    }
+    
+    // 初始化描述信息的静态方法
+    static void init_description(const describer& desc) {
+        description = desc;
+    }
+    
+    // 自动从反射信息生成描述
+    static void auto_generate_description() {
+        description.table_name = std::string(get_class_name<type>());
+        
+        constexpr auto names = get_member_names<type>();
+        constexpr auto types = get_member_class_names<type>();
+        
+        description.field_names.clear();
+        description.field_types.clear();
+        description.field_constraints.clear();
+        description.skip_on_insert.clear();
+        description.skip_on_update.clear();
+        
+        for (size_t i = 0; i < names.size(); ++i) {
+            description.field_names.push_back(std::string(names[i]));
+            
+            // 映射类型名到SQL类型
+            std::string_view cpp_type = types[i];
+            std::string sql_type;
+            std::string constraint;
+            bool skip_insert = false;
+            bool skip_update = false;
+            
+            if (cpp_type == "int") {
+                sql_type = "INT";
+            } else if (cpp_type == "string") {
+                sql_type = "VARCHAR(255)";
+            } else if (cpp_type.find("varchar") != std::string_view::npos) {
+                sql_type = "VARCHAR(255)";
+            } else if (cpp_type == "bigint") {
+                sql_type = "BIGINT";
+            } else if (cpp_type == "text") {
+                sql_type = "TEXT";
+            } else if (cpp_type == "timestamp") {
+                sql_type = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
+                skip_insert = true; // 时间戳字段通常在插入时跳过
+            } else {
+                sql_type = "TEXT";
+            }
+            
+            // 第一个字段默认为主键
+            if (i == 0) {
+                constraint = "AUTO_INCREMENT PRIMARY KEY";
+                skip_insert = true;
+                skip_update = true;
+                if (description.primerkey.empty()) {
+                    description.primerkey = std::string(names[i]);
+                }
+            } else {
+                constraint = "NOT NULL";
+            }
+            
+            description.field_types.push_back(sql_type);
+            description.field_constraints.push_back(constraint);
+            description.skip_on_insert.push_back(skip_insert);
+            description.skip_on_update.push_back(skip_update);
+        }
+    }
+    
+    // 获取描述信息的访问器
+    static const describer& get_description() {
+        // 如果描述信息为空，自动生成
+        if (description.field_names.empty()) {
+            auto_generate_description();
+        }
+        return description;
+    }
+};
+
+// 静态成员定义
+template <class type>
+describer table_discribe<type>::description = {};
 
 // SQL基础类型
 struct only_content
@@ -34,19 +157,25 @@ struct only_content
         content = std::move(str);
         return *this;
     }
-    
+
     // 添加字符串字面量赋值操作符
     only_content& operator=(const char* str)
     {
         content = str;
         return *this;
     }
-    
+
     // 添加构造函数支持
     only_content() = default;
-    only_content(const std::string& str) : content(str) {}
-    only_content(std::string&& str) : content(std::move(str)) {}
-    only_content(const char* str) : content(str) {}
+    only_content(const std::string& str) : content(str)
+    {
+    }
+    only_content(std::string&& str) : content(std::move(str))
+    {
+    }
+    only_content(const char* str) : content(str)
+    {
+    }
 };
 
 template <size_t size> struct varchar : only_content
@@ -54,35 +183,65 @@ template <size_t size> struct varchar : only_content
     // 继承基类的构造函数
     using only_content::only_content;
     using only_content::operator=;
-    
-    static constexpr std::string_view sql_type()
+
+    // 修复：返回字符串字面量，而不是临时对象
+    static constexpr const char* sql_type()
     {
-        return "VARCHAR(" + std::to_string(size) + ")";
+        if constexpr (size <= 50)
+        {
+            return "VARCHAR(50)";
+        }
+        else if constexpr (size <= 100)
+        {
+            return "VARCHAR(100)";
+        }
+        else if constexpr (size <= 255)
+        {
+            return "VARCHAR(255)";
+        }
+        else if constexpr (size <= 500)
+        {
+            return "VARCHAR(500)";
+        }
+        else if constexpr (size <= 1000)
+        {
+            return "VARCHAR(1000)";
+        }
+        else
+        {
+            return "TEXT";
+        }
     }
     static constexpr size_t max_length = size;
 };
+
 struct text : only_content
 {
     // 继承基类的构造函数
     using only_content::only_content;
     using only_content::operator=;
-    
-    static constexpr std::string_view sql_type()
+
+    static constexpr const char* sql_type()
     {
         return "TEXT";
     }
 };
+
 struct bigint : only_content
 {
     // 继承基类的构造函数和赋值操作符
     using only_content::only_content;
     using only_content::operator=;
-    
+
     // 添加数值类型的构造函数
-    bigint(long long val) : only_content(std::to_string(val)) {}
-    bigint(int val) : only_content(std::to_string(val)) {}
-    
-    static constexpr std::string_view sql_type()
+    bigint(long long val) : only_content(std::to_string(val))
+    {
+    }
+    bigint(int val) : only_content(std::to_string(val))
+    {
+    }
+
+    static constexpr const char* sql_type()
     {
         return "BIGINT";
     }
@@ -108,8 +267,8 @@ struct timestamp : only_content
     // 继承基类的构造函数
     using only_content::only_content;
     using only_content::operator=;
-    
-    static constexpr std::string_view sql_type()
+
+    static constexpr const char* sql_type()
     {
         return "TIMESTAMP";
     }
@@ -156,11 +315,13 @@ template <typename T> class data_views
     }
 
     // 生成INSERT SQL语句 - 改进版本，表名默认为类名
-    std::string to_insert_sql(const std::string& table_name = "", bool skip_auto_fields = true) const
+    std::string to_insert_sql(const std::string& table_name = "",
+                              bool skip_auto_fields = true) const
     {
         std::string sql = "INSERT INTO ";
         // 如果没有提供表名，则使用类名作为默认表名
-        std::string actual_table_name = table_name.empty() ? std::string(get_class_name<T>()) : table_name;
+        std::string actual_table_name =
+            table_name.empty() ? std::string(get_class_name<T>()) : table_name;
         sql += actual_table_name;
         sql += " (";
 
@@ -168,42 +329,52 @@ template <typename T> class data_views
         constexpr auto names = get_member_names<T>();
         std::vector<std::string> valid_fields;
         std::vector<size_t> valid_indices;
-        
+
         for (size_t i = 0; i < names.size(); ++i)
         {
             // 检查是否应该跳过此字段
             bool should_skip = false;
-            
-            if (skip_auto_fields) {
+
+            if (skip_auto_fields)
+            {
                 // 跳过第一个字段（通常是自增ID）
-                if (i == 0) {
+                if (i == 0)
+                {
                     should_skip = true;
                 }
                 // 检查timestamp字段是否为空
-                else {
-                    visit_each_member(data, [&, i]<class M, int index>(auto&& member) {
-                        if (index == i) {
-                            using MemberType = std::decay_t<decltype(member)>;
-                            if constexpr (requires { member.content; }) {
-                                if (member.content.empty()) {
-                                    should_skip = true;
-                                }
-                            }
-                        }
-                    });
+                else
+                {
+                    visit_each_member(data,
+                                      [&, i]<class M, int index>(auto&& member)
+                                      {
+                                          if (index == i)
+                                          {
+                                              // using MemberType = std::decay_t<decltype(member)>;
+                                              if constexpr (requires { member.content; })
+                                              {
+                                                  if (member.content.empty())
+                                                  {
+                                                      should_skip = true;
+                                                  }
+                                              }
+                                          }
+                                      });
                 }
             }
-            
-            if (!should_skip) {
+
+            if (!should_skip)
+            {
                 valid_fields.push_back(std::string(names[i]));
                 valid_indices.push_back(i);
             }
         }
-        
+
         // 构建字段列表
         for (size_t i = 0; i < valid_fields.size(); ++i)
         {
-            if (i > 0) sql += ", ";
+            if (i > 0)
+                sql += ", ";
             sql += valid_fields[i];
         }
         sql += ") VALUES (";
@@ -211,7 +382,8 @@ template <typename T> class data_views
         // 添加占位符
         for (size_t i = 0; i < valid_fields.size(); ++i)
         {
-            if (i > 0) sql += ", ";
+            if (i > 0)
+                sql += ", ";
             sql += "?";
         }
         sql += ")";
@@ -219,42 +391,46 @@ template <typename T> class data_views
     }
 
     // 生成UPDATE SQL语句 - 改进版本，表名默认为类名
-    std::string to_update_sql(const std::string& where_clause,
-                              const std::string& table_name = "",
+    std::string to_update_sql(const std::string& where_clause, const std::string& table_name = "",
                               bool skip_auto_fields = true) const
     {
         std::string sql = "UPDATE ";
         // 如果没有提供表名，则使用类名作为默认表名
-        std::string actual_table_name = table_name.empty() ? std::string(get_class_name<T>()) : table_name;
+        std::string actual_table_name =
+            table_name.empty() ? std::string(get_class_name<T>()) : table_name;
         sql += actual_table_name;
         sql += " SET ";
 
         // 获取有效字段，跳过自增ID和空的timestamp字段
         constexpr auto names = get_member_names<T>();
         std::vector<std::string> valid_fields;
-        
+
         for (size_t i = 0; i < names.size(); ++i)
         {
             // 检查是否应该跳过此字段
             bool should_skip = false;
-            
-            if (skip_auto_fields) {
+
+            if (skip_auto_fields)
+            {
                 // 跳过第一个字段（通常是自增ID）
-                if (i == 0) {
+                if (i == 0)
+                {
                     should_skip = true;
                 }
                 // 对于UPDATE，不跳过timestamp字段，因为可能需要更新
             }
-            
-            if (!should_skip) {
+
+            if (!should_skip)
+            {
                 valid_fields.push_back(std::string(names[i]));
             }
         }
-        
+
         // 构建SET子句
         for (size_t i = 0; i < valid_fields.size(); ++i)
         {
-            if (i > 0) sql += ", ";
+            if (i > 0)
+                sql += ", ";
             sql += valid_fields[i] + " = ?";
         }
 
@@ -275,55 +451,60 @@ template <typename T> class data_views
         size_t param_index = 0;
         bool success = true;
 
-        visit_each_member(data,
-                          [&stmt, &param_index, &success, skip_auto_fields]<class M, int index>(auto&& member)
-                          {
-                              using MemberType = std::decay_t<decltype(member)>;
+        visit_each_member(
+            data,
+            [&stmt, &param_index, &success, skip_auto_fields]<class M, int index>(auto&& member)
+            {
+                using MemberType = std::decay_t<decltype(member)>;
 
-                              // 检查是否应该跳过此字段
-                              bool should_skip = false;
-                              
-                              if (skip_auto_fields) {
-                                  // 跳过第一个字段（通常是自增ID）
-                                  if (index == 0) {
-                                      should_skip = true;
-                                  }
-                                  // 检查timestamp字段是否为空
-                                  else if constexpr (requires { member.content; }) {
-                                      if (member.content.empty()) {
-                                          should_skip = true;
-                                      }
-                                  }
-                              }
-                              
-                              if (should_skip) {
-                                  return; // 跳过此字段，不增加param_index
-                              }
+                // 检查是否应该跳过此字段
+                bool should_skip = false;
 
-                              if constexpr (std::is_same_v<MemberType, std::string>)
-                              {
-                                  success &= stmt->setString(param_index, member);
-                              }
-                              else if constexpr (std::is_same_v<MemberType, int>)
-                              {
-                                  success &= stmt->setInt(param_index, member);
-                              }
-                              else if constexpr (std::is_floating_point_v<MemberType>)
-                              {
-                                  success &=
-                                      stmt->setDouble(param_index, static_cast<double>(member));
-                              }
-                              else if constexpr (requires { member.content; })
-                              {
-                                  success &= stmt->setString(param_index, member.content);
-                              }
-                              else
-                              {
-                                  success &= stmt->setString(param_index, std::to_string(member));
-                              }
+                if (skip_auto_fields)
+                {
+                    // 跳过第一个字段（通常是自增ID）
+                    if (index == 0)
+                    {
+                        should_skip = true;
+                    }
+                    // 检查timestamp字段是否为空
+                    else if constexpr (requires { member.content; })
+                    {
+                        if (member.content.empty())
+                        {
+                            should_skip = true;
+                        }
+                    }
+                }
 
-                              param_index++;
-                          });
+                if (should_skip)
+                {
+                    return; // 跳过此字段，不增加param_index
+                }
+
+                if constexpr (std::is_same_v<MemberType, std::string>)
+                {
+                    success &= stmt->setString(param_index, member);
+                }
+                else if constexpr (std::is_same_v<MemberType, int>)
+                {
+                    success &= stmt->setInt(param_index, member);
+                }
+                else if constexpr (std::is_floating_point_v<MemberType>)
+                {
+                    success &= stmt->setDouble(param_index, static_cast<double>(member));
+                }
+                else if constexpr (requires { member.content; })
+                {
+                    success &= stmt->setString(param_index, member.content);
+                }
+                else
+                {
+                    success &= stmt->setString(param_index, std::to_string(member));
+                }
+
+                param_index++;
+            });
 
         return success;
     }
@@ -337,50 +518,53 @@ template <typename T> class data_views
         size_t param_index = 0;
         bool success = true;
 
-        visit_each_member(data,
-                          [&stmt, &param_index, &success, skip_auto_fields]<class M, int index>(auto&& member)
-                          {
-                              using MemberType = std::decay_t<decltype(member)>;
+        visit_each_member(
+            data,
+            [&stmt, &param_index, &success, skip_auto_fields]<class M, int index>(auto&& member)
+            {
+                using MemberType = std::decay_t<decltype(member)>;
 
-                              // 检查是否应该跳过此字段
-                              bool should_skip = false;
-                              
-                              if (skip_auto_fields) {
-                                  // 跳过第一个字段（通常是自增ID）
-                                  if (index == 0) {
-                                      should_skip = true;
-                                  }
-                                  // 对于UPDATE，不跳过timestamp字段
-                              }
-                              
-                              if (should_skip) {
-                                  return; // 跳过此字段，不增加param_index
-                              }
+                // 检查是否应该跳过此字段
+                bool should_skip = false;
 
-                              if constexpr (std::is_same_v<MemberType, std::string>)
-                              {
-                                  success &= stmt->setString(param_index, member);
-                              }
-                              else if constexpr (std::is_same_v<MemberType, int>)
-                              {
-                                  success &= stmt->setInt(param_index, member);
-                              }
-                              else if constexpr (std::is_floating_point_v<MemberType>)
-                              {
-                                  success &=
-                                      stmt->setDouble(param_index, static_cast<double>(member));
-                              }
-                              else if constexpr (requires { member.content; })
-                              {
-                                  success &= stmt->setString(param_index, member.content);
-                              }
-                              else
-                              {
-                                  success &= stmt->setString(param_index, std::to_string(member));
-                              }
+                if (skip_auto_fields)
+                {
+                    // 跳过第一个字段（通常是自增ID）
+                    if (index == 0)
+                    {
+                        should_skip = true;
+                    }
+                    // 对于UPDATE，不跳过timestamp字段
+                }
 
-                              param_index++;
-                          });
+                if (should_skip)
+                {
+                    return; // 跳过此字段，不增加param_index
+                }
+
+                if constexpr (std::is_same_v<MemberType, std::string>)
+                {
+                    success &= stmt->setString(param_index, member);
+                }
+                else if constexpr (std::is_same_v<MemberType, int>)
+                {
+                    success &= stmt->setInt(param_index, member);
+                }
+                else if constexpr (std::is_floating_point_v<MemberType>)
+                {
+                    success &= stmt->setDouble(param_index, static_cast<double>(member));
+                }
+                else if constexpr (requires { member.content; })
+                {
+                    success &= stmt->setString(param_index, member.content);
+                }
+                else
+                {
+                    success &= stmt->setString(param_index, std::to_string(member));
+                }
+
+                param_index++;
+            });
 
         return success;
     }
@@ -447,10 +631,13 @@ template <class T> class enable_sql
     {
     }
 
-    // 获取表名
+    // 获取表名 - 从table_discribe获取
     std::string table_name() const
     {
-        return table_name_override.empty() ? std::string(get_class_name<T>()) : table_name_override;
+        if (!table_name_override.empty()) {
+            return table_name_override;
+        }
+        return table_discribe<T>::get_table_name();
     }
 
     // 将结构体转换为data_views
@@ -640,61 +827,17 @@ template <class T> class enable_sql
         return result != nullptr;
     }
 
-    // 生成创建表的SQL语句
+    // 生成创建表的SQL语句 - 使用描述信息
     std::string generate_create_table_sql() const
     {
+        const auto& desc = table_discribe<T>::get_description();
         std::string sql = "CREATE TABLE IF NOT EXISTS " + table_name() + " (\n";
 
-        constexpr auto names = get_member_names<T>();
-        constexpr auto types = get_member_class_names<T>();
-
-        for (size_t i = 0; i < names.size(); ++i)
+        for (size_t i = 0; i < desc.field_count(); ++i)
         {
-            if (i > 0)
-                sql += ",\n";
-            sql += "    " + std::string(names[i]) + " ";
-
-            // 映射C++类型到SQL类型
-            std::string_view cpp_type = types[i];
-            if (cpp_type == "int")
-            {
-                sql += "INT";
-            }
-            else if (cpp_type == "string")
-            {
-                sql += "VARCHAR(255)";
-            }
-            else if (cpp_type.find("varchar") != std::string_view::npos)
-            {
-                // 从varchar<N>中提取大小
-                sql += "VARCHAR(255)"; // 默认大小，实际应该解析模板参数
-            }
-            else if (cpp_type == "bigint")
-            {
-                sql += "BIGINT";
-            }
-            else if (cpp_type == "text")
-            {
-                sql += "TEXT";
-            }
-            else if (cpp_type == "timestamp")
-            {
-                sql += "TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
-            }
-            else
-            {
-                sql += "TEXT"; // 默认类型
-            }
-
-            // 添加约束
-            if (i == 0)
-            { // 假设第一个字段是主键
-                sql += " AUTO_INCREMENT PRIMARY KEY";
-            }
-            else
-            {
-                sql += " NOT NULL";
-            }
+            if (i > 0) sql += ",\n";
+            sql += "    " + desc.field_names[i] + " " + 
+                   desc.field_types[i] + " " + desc.field_constraints[i];
         }
 
         sql += "\n)";
@@ -732,3 +875,12 @@ template <class T> auto make_sql_enabled(MySQLHandle& handle, const std::string&
     {                                                                                              \
         return make_sql_enabled<Type>(handle_ref);                                                 \
     }
+
+// 便利宏：定义表描述信息
+#define DEFINE_TABLE_DESCRIPTION(Type, TableName, PrimaryKey, ...)                                \
+    template<>                                                                                     \
+    describer table_discribe<Type>::description = {                                               \
+        .primerkey = PrimaryKey,                                                                   \
+        .table_name = TableName,                                                                   \
+        __VA_ARGS__                                                                                \
+    };

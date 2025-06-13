@@ -1,11 +1,8 @@
 #ifndef MYSQL_HANDLE_H
 #define MYSQL_HANDLE_H
 
-#include <iostream>
 #include <mysql/mysql.h>
 #include <string>
-#include <vector>
-#include <memory>
 #include "mysqlResult.h"
 #include "mysqlStatement.h"
 
