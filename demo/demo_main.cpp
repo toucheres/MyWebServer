@@ -70,9 +70,6 @@ struct messages
 template <>
 describer table_discribe<users>::description = {
     .primerkey = "id",
-    .table_name = "users",
-    .field_names = {"id", "username", "password", "created_at"},
-    .field_types = {"INT", "VARCHAR(50)", "VARCHAR(100)", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
     .field_constraints = {"AUTO_INCREMENT PRIMARY KEY", "NOT NULL UNIQUE", "NOT NULL",
                           "DEFAULT_GENERATED"},
     .skip_on_insert = {true, false, false, true}, // 跳过id和created_at
@@ -82,9 +79,6 @@ describer table_discribe<users>::description = {
 template <>
 describer table_discribe<messages>::description = {
     .primerkey = "id",
-    .table_name = "messages",
-    .field_names = {"id", "sender", "content", "created_at"},
-    .field_types = {"INT", "VARCHAR(50)", "TEXT", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
     .field_constraints = {"AUTO_INCREMENT PRIMARY KEY", "NOT NULL", "NOT NULL",
                           "DEFAULT_GENERATED"},
     .skip_on_insert = {true, false, false, true}, // 跳过id和created_at

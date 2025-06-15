@@ -8,8 +8,10 @@
 #include <string_view>
 #include <vector>
 
+template <class type> class table_discribe;
 struct describer
 {
+    friend table_discribe<class type>;
     std::string primerkey;
     std::string table_name;
     std::vector<std::string> field_names;
@@ -18,113 +20,178 @@ struct describer
     std::vector<bool> skip_on_insert;
     std::vector<bool> skip_on_update;
     bool auto_timestamp = true;
-    
+
     // 辅助方法
-    size_t field_count() const { return field_names.size(); }
-    
-    bool should_skip_field_on_insert(size_t index) const {
+    size_t field_count() const
+    {
+        return field_names.size();
+    }
+
+    bool should_skip_field_on_insert(size_t index) const
+    {
         return index < skip_on_insert.size() ? skip_on_insert[index] : false;
     }
-    
-    bool should_skip_field_on_update(size_t index) const {
+
+    bool should_skip_field_on_update(size_t index) const
+    {
         return index < skip_on_update.size() ? skip_on_update[index] : false;
     }
-    
-    std::string get_field_type(size_t index) const {
+
+    std::string get_field_type(size_t index) const
+    {
         return index < field_types.size() ? field_types[index] : "TEXT";
     }
-    
-    std::string get_field_constraint(size_t index) const {
+
+    std::string get_field_constraint(size_t index) const
+    {
         return index < field_constraints.size() ? field_constraints[index] : "NOT NULL";
     }
 };
 
 template <class type> class table_discribe
 {
-public:
+  public:
     static describer description;
-    
+
     // 获取表名
-    static std::string get_table_name() {
-        if (!description.table_name.empty()) {
+    static std::string get_table_name()
+    {
+        if (!description.table_name.empty())
+        {
             return description.table_name;
         }
         return std::string(get_class_name<type>());
     }
-    
+
     // 获取主键字段名
-    static std::string get_primary_key() {
+    static std::string get_primary_key()
+    {
         return description.primerkey;
     }
-    
+
     // 初始化描述信息的静态方法
-    static void init_description(const describer& desc) {
+    static void init_description(const describer& desc)
+    {
         description = desc;
     }
-    
+
     // 自动从反射信息生成描述
-    static void auto_generate_description() {
+    static void auto_generate_description()
+    {
+        if (!description.field_names.empty()) {
+            return; // 已经初始化过了
+        }
+
         description.table_name = std::string(get_class_name<type>());
-        
+
         constexpr auto names = get_member_names<type>();
         constexpr auto types = get_member_class_names<type>();
-        
+
         description.field_names.clear();
         description.field_types.clear();
         description.field_constraints.clear();
         description.skip_on_insert.clear();
         description.skip_on_update.clear();
-        
-        for (size_t i = 0; i < names.size(); ++i) {
-            description.field_names.push_back(std::string(names[i]));
-            
+
+        // 预留容量
+        description.field_names.reserve(names.size());
+        description.field_types.reserve(names.size());
+        description.field_constraints.reserve(names.size());
+        description.skip_on_insert.reserve(names.size());
+        description.skip_on_update.reserve(names.size());
+
+        for (size_t i = 0; i < names.size(); ++i)
+        {
+            description.field_names.emplace_back(names[i]);
+
             // 映射类型名到SQL类型
             std::string_view cpp_type = types[i];
             std::string sql_type;
             std::string constraint;
             bool skip_insert = false;
             bool skip_update = false;
-            
-            if (cpp_type == "int") {
+
+            // 更精确的类型映射
+            if (cpp_type == "int")
+            {
                 sql_type = "INT";
-            } else if (cpp_type == "string") {
-                sql_type = "VARCHAR(255)";
-            } else if (cpp_type.find("varchar") != std::string_view::npos) {
-                sql_type = "VARCHAR(255)";
-            } else if (cpp_type == "bigint") {
-                sql_type = "BIGINT";
-            } else if (cpp_type == "text") {
-                sql_type = "TEXT";
-            } else if (cpp_type == "timestamp") {
-                sql_type = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
-                skip_insert = true; // 时间戳字段通常在插入时跳过
-            } else {
+            }
+            else if (cpp_type.starts_with("varchar"))
+            {
+                // 从varchar<N>中提取大小
+                if (auto pos = cpp_type.find('<'); pos != std::string_view::npos)
+                {
+                    auto end_pos = cpp_type.find('>', pos);
+                    if (end_pos != std::string_view::npos)
+                    {
+                        auto size_str = cpp_type.substr(pos + 1, end_pos - pos - 1);
+                        sql_type = "VARCHAR(" + std::string(size_str) + ")";
+                    }
+                    else
+                    {
+                        sql_type = "VARCHAR(255)";
+                    }
+                }
+                else
+                {
+                    sql_type = "VARCHAR(255)";
+                }
+            }
+            else if (cpp_type == "text")
+            {
                 sql_type = "TEXT";
             }
-            
+            else if (cpp_type == "bigint")
+            {
+                sql_type = "BIGINT";
+            }
+            else if (cpp_type == "timestamp")
+            {
+                sql_type = "TIMESTAMP";
+                constraint = "DEFAULT CURRENT_TIMESTAMP";
+                skip_insert = true;
+            }
+            else
+            {
+                sql_type = "TEXT";
+            }
+
             // 第一个字段默认为主键
-            if (i == 0) {
-                constraint = "AUTO_INCREMENT PRIMARY KEY";
+            if (i == 0)
+            {
+                if (constraint.empty())
+                {
+                    constraint = "AUTO_INCREMENT PRIMARY KEY";
+                }
+                else
+                {
+                    constraint += " AUTO_INCREMENT PRIMARY KEY";
+                }
                 skip_insert = true;
                 skip_update = true;
-                if (description.primerkey.empty()) {
+                if (description.primerkey.empty())
+                {
                     description.primerkey = std::string(names[i]);
                 }
-            } else {
+            }
+            else if (constraint.empty())
+            {
                 constraint = "NOT NULL";
             }
-            
+
             description.field_types.push_back(sql_type);
             description.field_constraints.push_back(constraint);
             description.skip_on_insert.push_back(skip_insert);
             description.skip_on_update.push_back(skip_update);
         }
     }
-    
+
     // 获取描述信息的访问器
-    static const describer& get_description() {
+    static const describer& get_description()
+    {
         // 如果描述信息为空，自动生成
-        if (description.field_names.empty()) {
+        if (description.field_names.empty())
+        {
             auto_generate_description();
         }
         return description;
@@ -132,8 +199,12 @@ public:
 };
 
 // 静态成员定义
-template <class type>
-describer table_discribe<type>::description = {};
+// template <class type>
+// describer table_discribe<type>::description = {.table_name = get_class_name<type>(),
+//                                                .field_names = {get_member_names<type>()},
+//                                                .field_types = {get_member_class_names<type>()},
+//                                             };
+template <class type> describer table_discribe<type>::description = {};
 
 // SQL基础类型
 struct only_content
@@ -634,7 +705,8 @@ template <class T> class enable_sql
     // 获取表名 - 从table_discribe获取
     std::string table_name() const
     {
-        if (!table_name_override.empty()) {
+        if (!table_name_override.empty())
+        {
             return table_name_override;
         }
         return table_discribe<T>::get_table_name();
@@ -835,9 +907,10 @@ template <class T> class enable_sql
 
         for (size_t i = 0; i < desc.field_count(); ++i)
         {
-            if (i > 0) sql += ",\n";
-            sql += "    " + desc.field_names[i] + " " + 
-                   desc.field_types[i] + " " + desc.field_constraints[i];
+            if (i > 0)
+                sql += ",\n";
+            sql += "    " + desc.field_names[i] + " " + desc.field_types[i] + " " +
+                   desc.field_constraints[i];
         }
 
         sql += "\n)";
@@ -877,10 +950,7 @@ template <class T> auto make_sql_enabled(MySQLHandle& handle, const std::string&
     }
 
 // 便利宏：定义表描述信息
-#define DEFINE_TABLE_DESCRIPTION(Type, TableName, PrimaryKey, ...)                                \
-    template<>                                                                                     \
-    describer table_discribe<Type>::description = {                                               \
-        .primerkey = PrimaryKey,                                                                   \
-        .table_name = TableName,                                                                   \
-        __VA_ARGS__                                                                                \
-    };
+#define DEFINE_TABLE_DESCRIPTION(Type, TableName, PrimaryKey, ...)                                 \
+    template <>                                                                                    \
+    describer table_discribe<Type>::description = {                                                \
+        .primerkey = PrimaryKey, .table_name = TableName, __VA_ARGS__};
