@@ -2,6 +2,7 @@
 #include "file.h"
 #include "platform.h"
 #include "protocol_constants.h" // 新增包含
+#include "serverFile.h"
 #include <filesystem>
 #include <httpServerFile.h>
 #include <iostream>
@@ -222,6 +223,18 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                                       file.write(std::string(content)); // 移除不必要的std::move
                                   }
                               });
+        }
+    }
+}
+
+void HttpServer::callback_callback(std::string format,serverFile& file)
+{
+    for (auto call = callbacks_format.begin(); call != callbacks_format.end(); call++)
+    {
+        if (call->first == format)
+        {
+            call->second(file);
+            break;
         }
     }
 }

@@ -59,6 +59,8 @@ class HttpServerUtil
     // HTTP协议相关函数
     static std::string makeHttpHead(int status, std::string_view content,
                                     std::string_view content_type = "text/plain;charset=utf-8");
+    static std::string makeHttp(int status, std::string_view content,
+                                    std::string_view content_type = "text/plain;charset=utf-8");
     static std::string judge_file_type(std::string_view path);
     static bool initialize();
     static std::string urlDecode(const std::string& encoded);

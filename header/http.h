@@ -27,7 +27,7 @@ class HttpServer : public co_async
     bool setReuseAddr(int& fd);
     Task<void, void> start();
     Task<void, void> server_task_handle; // Renamed from 'handle'
-    //std::string processRequest(const std::string& request);
+    // std::string processRequest(const std::string& request);
     std::forward_list<std::pair<Format, std::function<void(serverFile&)>>> callbacks_format;
     std::unordered_map<int, std::shared_ptr<serverFile>> fileMap; // Client connections
     void processFiles();                                          // Changed return type to void
@@ -35,6 +35,7 @@ class HttpServer : public co_async
 
   public:
     void autoLoginFile(LocalFiles& static_files);
+    void callback_callback(std::string format, serverFile& file);
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();
     bool stop();

@@ -6,12 +6,14 @@
 #include "login.hpp"
 #include "message.h"
 #include "mysqlHandle.h"
+#include "serverFile.h"
 #include "stdiomanager.hpp"
 #include "users.h"
 #include <cstdlib>
 #include <iostream>
 #include <string>
 #include <string_view>
+
 HttpServer server;
 LocalFiles LocalFileCache;
 MySQLHandle sql{"localhost", "webserver", "WebServer@2025", "chat_db"};
@@ -51,10 +53,10 @@ int main()
         });
     server.autoLoginFile(LocalFileCache);
     server.addCallbackFormat(
-        Format{"/api/login/%[^/]/%s", Format::Type::scanf},
+        Format{"/login/%[^/]/%s", Format::Type::scanf},
         [](serverFile& connection)
         {
-            auto ret = Format{"/api/login/%[^/]/%s", Format::Type::scanf}.parse(
+            auto ret = Format{"/login/%[^/]/%s", Format::Type::scanf}.parse(
                 connection.getContent()["path"]);
             if (ret)
             {
@@ -81,14 +83,42 @@ int main()
                 connection.write(HttpResponse{400});
             }
         });
-    server.addCallbackFormat(Format{"/dosomething", Format::Type::same},
+    server.addCallbackFormat(Format{"/do", Format::Type::same},
                              [](serverFile& file)
                              {
+                                 std::cout << "ok" << '\n';
                                  auto cookie = file.getContent()["cookie"];
                                  auto ret = check(cookie);
-                                 std::cout << json::from(ret) << '\n';
-                                 ret.password = "s";
+                                 file << HttpServerUtil::makeHttp(
+                                     200, std::format("your name is: {}, your password is {}",
+                                                      ret.username.content, ret.password.content));
                              });
+    server.addCallbackFormat(
+        Format{"/api%s", Format::Type::scanf},
+        [](serverFile& file)
+        {
+            auto cookie = file.getContent()["cookie"];
+            auto ret = check(cookie);
+            // std::cout << file.socketfile_.handle_.context->content.data() << '\n';
+            if (ret.username != "")
+            {
+                auto path_parse_result =
+                    Format{"/api%s", Format::Type::scanf}.parse(file.getContent()["path"]);
+                if (path_parse_result)
+                {
+                    auto api_path = std::get<std::string>((*path_parse_result)[0]);
+                    server.callback_callback(api_path, file);
+                }
+                else
+                {
+                    file.write(HttpResponse{400});
+                }
+            }
+            else
+            {
+                file.write(HttpServerUtil::makeHttp(403, ""));
+            }
+        });
     auto& coru = Co_Start_Manager::getInstance();
     coru.add(iol);
     coru.add(server);
@@ -111,28 +141,40 @@ int main()
 //     in2 in2_;
 // };
 
-// int main_()
+// int main()
 // {
 //     {
-//         json::defultOpt.flatten_single_member = false;
+//         // json::defultOpt.flatten_single_member = false;
 
-//         auto obj = test{.in2_ = "1", .in_ = "2", .test_ = "3"};
-//         std::cout << json::from(obj) << '\n';
-//         std::cout << json::from(json::to<test>(json::from(obj))) << '\n';
+//         // auto obj = test{.in2_ = "1", .in_ = "2", .test_ = "3"};
+//         // std::cout << json::from(obj) << '\n';
+//         // std::cout << json::from(json::to<test>(json::from(obj))) << '\n';
 
-//         auto obj_ = users{.created_at = "123", .id = 12, .password = "we", .username = "sadf"};
-//         std::cout << json::from(obj_) << '\n';
-//         std::cout << json::from(json::to<users>(json::from(obj_))) << '\n';
+//         // auto obj_ = users{.created_at = "123", .id = 12, .password = "we", .username =
+//         "sadf"};
+//         // std::cout << json::from(obj_) << '\n';
+//         // std::cout << json::from(json::to<users>(json::from(obj_))) << '\n';
 //     }
 //     {
+//         // json::defultOpt.flatten_single_member = true;
+
+//         // auto obj = test{.in2_ = "1", .in_ = "2", .test_ = "3"};
+//         // std::cout << json::from(obj) << '\n';
+//         // std::cout << json::from(json::to<test>(json::from(obj))) << '\n';
 //         json::defultOpt.flatten_single_member = true;
+//         json test;
+//         test.content = "{\"id\":0,\"username\":"
+//                        "\"testname\",\"password\":\"testpassword\",\"created_at\":\"testc\"}";
+//         auto ret = json::to<users>(test);
+//         users u;
+//         u.id = 0;
+//         u.password = "12";
+//         u.username = "123";
 
-//         auto obj = test{.in2_ = "1", .in_ = "2", .test_ = "3"};
-//         std::cout << json::from(obj) << '\n';
-//         std::cout << json::from(json::to<test>(json::from(obj))) << '\n';
+//         std::cout << test << '\n';
+//         std::cout << json::from(u) << '\n';
 
-//         auto obj_ = users{.created_at = "123", .id = 12, .password = "we", .username = "sadf"};
-//         std::cout << json::from(obj_) << '\n';
-//         std::cout << json::from(json::to<users>(json::from(obj_))) << '\n';
+//         std::cout << json::from(ret) << '\n';
+//         std::cout << json::from(json::to<users>(json::from(ret))) << '\n';
 //     }
 // }

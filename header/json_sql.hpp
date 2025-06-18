@@ -78,7 +78,8 @@ template <class type> class table_discribe
     // 自动从反射信息生成描述
     static void auto_generate_description()
     {
-        if (!description.field_names.empty()) {
+        if (!description.field_names.empty())
+        {
             return; // 已经初始化过了
         }
 
@@ -207,7 +208,7 @@ template <size_t size> struct varchar
     std::string content;
 
     // // 转换操作符
-    // operator std::string() const 
+    // operator std::string() const
     // {
     //     return content;
     // }
@@ -218,7 +219,7 @@ template <size_t size> struct varchar
         content = str;
         return *this;
     }
-    
+
     varchar& operator=(std::string&& str)
     {
         content = std::move(str);
@@ -230,7 +231,14 @@ template <size_t size> struct varchar
         content = str;
         return *this;
     }
-
+    bool operator==(const auto& str)
+    {
+        return content == str;
+    }
+    bool operator!=(const char* str)
+    {
+        return !(content == str);
+    }
     static constexpr const char* sql_type()
     {
         if constexpr (size <= 50)
@@ -277,7 +285,7 @@ struct text
         content = str;
         return *this;
     }
-    
+
     text& operator=(std::string&& str)
     {
         content = std::move(str);
@@ -317,7 +325,7 @@ struct bigint
         content = str;
         return *this;
     }
-    
+
     bigint& operator=(std::string&& str)
     {
         content = std::move(str);
@@ -335,7 +343,7 @@ struct bigint
         content = std::to_string(val);
         return *this;
     }
-    
+
     bigint& operator=(int val)
     {
         content = std::to_string(val);
@@ -364,7 +372,7 @@ struct timestamp
         content = str;
         return *this;
     }
-    
+
     timestamp& operator=(std::string&& str)
     {
         content = std::move(str);

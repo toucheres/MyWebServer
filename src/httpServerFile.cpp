@@ -379,6 +379,12 @@ std::string HttpServerUtil::makeHttpHead(int status, std::string_view content,
     return response;
 }
 
+std::string HttpServerUtil::makeHttp(int status, std::string_view content,
+                                     std::string_view content_type){
+    auto head = HttpServerUtil::makeHttpHead(status, content, content_type);
+    return head + std::string(content);
+}
+
 std::string HttpServerUtil::judge_file_type(std::string_view path)
 {
     static const std::unordered_map<std::string, std::string> mime_types = {
