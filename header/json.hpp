@@ -10,23 +10,41 @@ class json
 {
   public:
     std::string content = "";
-    
+
     // 添加配置选项
-    struct options {
+    struct options
+    {
         bool flatten_single_member;
     };
     static inline options defultOpt = options{
         .flatten_single_member = false,
     };
 
+    json() = default;
     template <Aggregate T> static json from(T in, options opts = defultOpt)
     {
         return json(in, opts, true); // 明确指定为根级别
     }
-    
-    template <Aggregate T> static json to(json in)
+    static json from(const std::string& in)
     {
-        return from_json<T>(in.content);
+        json j;
+        j.content = in;
+        return j;
+    }
+
+    template <Aggregate T> static T to(json in, options opts = defultOpt)
+    {
+        return from_json<T>(in.content, opts);
+    }
+    template <Aggregate T> static T to(std::string in, options opts = defultOpt)
+    {
+        json j;
+        j.content = in;
+        return from_json<T>(j.content, opts);
+    }
+    operator std::string()
+    {
+        return content;
     }
 
   private:
@@ -41,39 +59,42 @@ class json
         constexpr size_t member_count = get_member_count_v<T>;
 
         // 只有在非根级别且启用扁平化且只有一个成员时才进行扁平化
-        if (opts.flatten_single_member && member_count == 1 && !is_root) {
+        if (opts.flatten_single_member && member_count == 1 && !is_root)
+        {
             // 单成员情况：直接序列化该成员的值
-            visit_each_member(
-                in,
-                [this, opts]<class M, int index>(auto&& arg)
-                {
-                    using ArgType = std::decay_t<decltype(arg)>;
-                    
-                    if constexpr (requires { (std::string) arg; })
-                    {
-                        content = "\"" + (std::string)arg + "\"";
-                    }
-                    else if constexpr (std::is_integral_v<ArgType> || std::is_floating_point_v<ArgType>)
-                    {
-                        content = std::to_string(arg);
-                    }
-                    else if constexpr (requires { std::to_string(arg); })
-                    {
-                        content = "\"" + std::to_string(arg) + "\"";
-                    }
-                    else if constexpr (MeaningfulAggregate<ArgType>)
-                    {
-                        // 递归处理嵌套聚合类型，传递 is_root = false
-                        json nested(arg, opts, false);
-                        content = nested.content;
-                    }
-                });
-        } else {
+            visit_each_member(in,
+                              [this, opts]<class M, int index>(auto&& arg)
+                              {
+                                  using ArgType = std::decay_t<decltype(arg)>;
+
+                                  if constexpr (requires { (std::string) arg; })
+                                  {
+                                      content = "\"" + (std::string)arg + "\"";
+                                  }
+                                  else if constexpr (std::is_integral_v<ArgType> ||
+                                                     std::is_floating_point_v<ArgType>)
+                                  {
+                                      content = std::to_string(arg);
+                                  }
+                                  else if constexpr (requires { std::to_string(arg); })
+                                  {
+                                      content = "\"" + std::to_string(arg) + "\"";
+                                  }
+                                  else if constexpr (MeaningfulAggregate<ArgType>)
+                                  {
+                                      // 递归处理嵌套聚合类型，传递 is_root = false
+                                      json nested(arg, opts, false);
+                                      content = nested.content;
+                                  }
+                              });
+        }
+        else
+        {
             // 正常情况：按原逻辑处理
             serialize_normal(in, opts);
         }
     }
-    
+
     // 将原有的序列化逻辑提取为单独方法
     template <Aggregate T> void serialize_normal(T in, options opts)
     {
@@ -112,10 +133,6 @@ class json
         if (!content.empty() && content.back() == ',')
             content.pop_back();
         content += "}";
-    }
-    operator std::string()
-    {
-        return content;
     }
 
     // 重命名为add_string，更明确表示添加字符串值
@@ -282,7 +299,8 @@ class json
                 {
                     // 嵌套对象值 - 存储为原始JSON字符串
                     int nested_level = 1;
-                    pos++; // 跳过 '{'
+                    size_t obj_start = pos; // 记录对象开始位置
+                    pos++;                  // 跳过 '{'
 
                     while (nested_level > 0 && pos < json_str.size())
                     {
@@ -297,7 +315,8 @@ class json
                         throw std::runtime_error("Unterminated object at position " +
                                                  std::to_string(value_start));
 
-                    result[key] = json_str.substr(value_start, pos - value_start);
+                    // 包含整个对象的JSON字符串，包括花括号
+                    result[key] = json_str.substr(obj_start, pos - obj_start);
                 }
                 else if (std::isdigit(json_str[pos]) || json_str[pos] == '-')
                 {
@@ -336,18 +355,105 @@ class json
         std::unordered_map<std::string, std::string> parse()
         {
             skip_whitespace();
-            auto result = parse_object();
-            skip_whitespace();
 
-            if (pos < json_str.size())
-                throw std::runtime_error("Unexpected data after JSON object");
+            // 检查是否是对象开始
+            if (pos < json_str.size() && json_str[pos] == '{')
+            {
+                auto result = parse_object();
+                skip_whitespace();
 
-            return result;
+                if (pos < json_str.size())
+                    throw std::runtime_error("Unexpected data after JSON object");
+
+                return result;
+            }
+            // 处理直接值（扁平化情况）
+            else if (pos < json_str.size())
+            {
+                std::string direct_value;
+                if (json_str[pos] == '"')
+                {
+                    direct_value = parse_string();
+                }
+                else if (std::isdigit(json_str[pos]) || json_str[pos] == '-')
+                {
+                    direct_value = std::to_string(parse_number());
+                }
+                else
+                {
+                    throw std::runtime_error("Unexpected character at position " +
+                                             std::to_string(pos));
+                }
+
+                // 返回一个特殊标记的映射，表示这是一个直接值
+                std::unordered_map<std::string, std::string> result;
+                result["__direct_value__"] = direct_value;
+                return result;
+            }
+
+            throw std::runtime_error("Empty JSON input");
         }
     };
 
+    // 在现有 from_json 函数之外添加此重载
+    template <MeaningfulAggregate T>
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return from_json<T>(std::string_view(json_str), opts);
+    }
+
+    // 尝试将JSON值解析为特定类型
+    template <typename T> static bool try_parse_value(const std::string& value, T& result)
+    {
+        try
+        {
+            if constexpr (std::is_same_v<T, std::string>)
+            {
+                // 字符串类型 - 如果有引号则去除
+                std::string temp = value;
+                if (temp.size() >= 2 && temp.front() == '"' && temp.back() == '"')
+                    temp = temp.substr(1, temp.size() - 2);
+                result = temp;
+                return true;
+            }
+            else if constexpr (std::is_integral_v<T>)
+            {
+                // 整数类型 - 清除可能的引号
+                std::string temp = value;
+                if (temp.size() >= 2 && temp.front() == '"' && temp.back() == '"')
+                    temp = temp.substr(1, temp.size() - 2);
+                result = std::stoi(temp);
+                return true;
+            }
+            else if constexpr (std::is_floating_point_v<T>)
+            {
+                // 浮点数类型 - 清除可能的引号
+                std::string temp = value;
+                if (temp.size() >= 2 && temp.front() == '"' && temp.back() == '"')
+                    temp = temp.substr(1, temp.size() - 2);
+                result = std::stof(temp);
+                return true;
+            }
+            // else if constexpr (requires { result.content; })
+            // {
+            //     // 处理带有content成员的类型
+            //     std::string temp = value;
+            //     if (temp.size() >= 2 && temp.front() == '"' && temp.back() == '"')
+            //         temp = temp.substr(1, temp.size() - 2);
+            //     result.content = temp;
+            //     return true;
+            // }
+        }
+        catch (...)
+        {
+            return false;
+        }
+        return false;
+    }
+
     // 从 JSON 字符串反序列化到聚合类型
-    template <MeaningfulAggregate T> static T from_json(std::string_view json_str)
+    template <MeaningfulAggregate T>
+    static T from_json(std::string_view json_str, options opts = defultOpt)
     {
         parser p(json_str);
         auto parsed_data = p.parse();
@@ -356,7 +462,7 @@ class json
 
         visit_each_member(
             result,
-            [&parsed_data]<class M, int index>(auto&& member)
+            [&parsed_data, &opts]<class M, int index>(auto&& member)
             {
                 using MemberType = std::decay_t<decltype(member)>;
 
@@ -368,40 +474,66 @@ class json
 
                 std::string value = parsed_data[member_name];
 
-                if constexpr (std::is_same_v<MemberType, std::string>)
+                try
                 {
-                    // 字符串类型 - 如果有引号则去除
-                    if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
-                        value = value.substr(1, value.size() - 2);
-                    member = value;
+                    if constexpr (std::is_same_v<MemberType, std::string>)
+                    {
+                        // 字符串类型处理
+                        if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+                            value = value.substr(1, value.size() - 2);
+                        member = value;
+                    }
+                    else if constexpr (std::is_integral_v<MemberType>)
+                    {
+                        // 整数类型处理
+                        if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+                            value = value.substr(1, value.size() - 2);
+                        member = std::stoi(value);
+                    }
+                    else if constexpr (MeaningfulAggregate<MemberType>)
+                    {
+                        if (opts.flatten_single_member)
+                        {
+                            // 处理扁平化模式下的嵌套结构体
+                            constexpr size_t nested_member_count = get_member_count_v<MemberType>;
+                            if (nested_member_count == 1)
+                            {
+                                // 直接将值赋给嵌套结构体的唯一成员
+                                visit_each_member(
+                                    member,
+                                    [&value]<class NestedM, int nested_index>(auto&& nested_member)
+                                    {
+                                        using NestedType = std::decay_t<decltype(nested_member)>;
+
+                                        // 去除引号
+                                        if (value.size() >= 2 && value.front() == '"' &&
+                                            value.back() == '"')
+                                            value = value.substr(1, value.size() - 2);
+
+                                        if constexpr (std::is_same_v<NestedType, std::string>)
+                                        {
+                                            nested_member = value;
+                                        }
+                                        else if constexpr (std::is_integral_v<NestedType>)
+                                        {
+                                            nested_member = std::stoi(value);
+                                        }
+                                    });
+                                // 已处理完毕，跳过后续递归处理
+                                return;
+                            }
+                        }
+
+                        // 递归处理普通嵌套聚合类型
+                        member = from_json<MemberType>(value, opts);
+                    }
                 }
-                else if constexpr (std::is_integral_v<MemberType>)
+                catch (...)
                 {
-                    // 整数类型 - 清除可能的引号
-                    if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
-                        value = value.substr(1, value.size() - 2);
-                    member = std::stoi(value);
-                }
-                else if constexpr (std::is_floating_point_v<MemberType>)
-                {
-                    // 浮点数类型 - 清除可能的引号
-                    if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
-                        value = value.substr(1, value.size() - 2);
-                    member = std::stof(value);
-                }
-                else if constexpr (MeaningfulAggregate<MemberType>)
-                {
-                    // 递归处理嵌套聚合类型
-                    member = from_json<MemberType>(value);
+                    // 处理解析异常
                 }
             });
 
         return result;
-    }
-
-    // 为了方便使用的辅助函数
-    template <typename T> static T parse(const std::string& json_str)
-    {
-        return from_json<T>(json_str);
     }
 };

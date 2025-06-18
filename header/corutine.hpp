@@ -848,9 +848,20 @@ class Co_Start_Manager
         static auto instance = Co_Start_Manager{};
         return instance;
     }
-
     Co_Manager& getManager()
     {
         return manager;
+    }
+    bool add(co_async* newtask)
+    {
+        return manager.add(newtask);
+    }
+    bool add(co_async& newtask)
+    {
+        return manager.add(newtask);
+    }
+    bool remove(co_async* uselesstask)
+    {
+        return manager.remove(uselesstask);
     }
 };

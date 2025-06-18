@@ -199,63 +199,38 @@ template <class type> class table_discribe
 };
 
 // 静态成员定义
-// template <class type>
-// describer table_discribe<type>::description = {.table_name = get_class_name<type>(),
-//                                                .field_names = {get_member_names<type>()},
-//                                                .field_types = {get_member_class_names<type>()},
-//                                             };
 template <class type> describer table_discribe<type>::description = {};
 
-// SQL基础类型
-struct only_content
+// 移除only_content结构体，并将类型定义修改为聚合类型
+template <size_t size> struct varchar
 {
     std::string content;
 
-    // 添加隐式转换操作符
-    operator std::string() const
-    {
-        return content;
-    }
+    // // 转换操作符
+    // operator std::string() const 
+    // {
+    //     return content;
+    // }
 
-    // 添加赋值操作符
-    only_content& operator=(const std::string& str)
+    // 赋值操作符
+    varchar& operator=(const std::string& str)
     {
         content = str;
         return *this;
     }
-    only_content& operator=(std::string&& str)
+    
+    varchar& operator=(std::string&& str)
     {
         content = std::move(str);
         return *this;
     }
 
-    // 添加字符串字面量赋值操作符
-    only_content& operator=(const char* str)
+    varchar& operator=(const char* str)
     {
         content = str;
         return *this;
     }
 
-    // 添加构造函数支持
-    only_content() = default;
-    only_content(const std::string& str) : content(str)
-    {
-    }
-    only_content(std::string&& str) : content(std::move(str))
-    {
-    }
-    only_content(const char* str) : content(str)
-    {
-    }
-};
-
-template <size_t size> struct varchar : only_content
-{
-    // 继承基类的构造函数
-    using only_content::only_content;
-    using only_content::operator=;
-
-    // 修复：返回字符串字面量，而不是临时对象
     static constexpr const char* sql_type()
     {
         if constexpr (size <= 50)
@@ -286,11 +261,34 @@ template <size_t size> struct varchar : only_content
     static constexpr size_t max_length = size;
 };
 
-struct text : only_content
+struct text
 {
-    // 继承基类的构造函数
-    using only_content::only_content;
-    using only_content::operator=;
+    std::string content;
+
+    // // 转换操作符
+    // operator std::string() const
+    // {
+    //     return content;
+    // }
+
+    // 赋值操作符
+    text& operator=(const std::string& str)
+    {
+        content = str;
+        return *this;
+    }
+    
+    text& operator=(std::string&& str)
+    {
+        content = std::move(str);
+        return *this;
+    }
+
+    text& operator=(const char* str)
+    {
+        content = str;
+        return *this;
+    }
 
     static constexpr const char* sql_type()
     {
@@ -298,46 +296,86 @@ struct text : only_content
     }
 };
 
-struct bigint : only_content
+struct bigint
 {
-    // 继承基类的构造函数和赋值操作符
-    using only_content::only_content;
-    using only_content::operator=;
+    std::string content;
 
-    // 添加数值类型的构造函数
-    bigint(long long val) : only_content(std::to_string(val))
+    // // 转换操作符
+    // operator std::string() const
+    // {
+    //     return content;
+    // }
+
+    operator long long() const
     {
+        return std::stoll(content);
     }
-    bigint(int val) : only_content(std::to_string(val))
+
+    // 赋值操作符
+    bigint& operator=(const std::string& str)
     {
+        content = str;
+        return *this;
+    }
+    
+    bigint& operator=(std::string&& str)
+    {
+        content = std::move(str);
+        return *this;
+    }
+
+    bigint& operator=(const char* str)
+    {
+        content = str;
+        return *this;
+    }
+
+    bigint& operator=(long long val)
+    {
+        content = std::to_string(val);
+        return *this;
+    }
+    
+    bigint& operator=(int val)
+    {
+        content = std::to_string(val);
+        return *this;
     }
 
     static constexpr const char* sql_type()
     {
         return "BIGINT";
     }
-
-    // 添加数值转换
-    operator long long() const
-    {
-        return std::stoll(content);
-    }
-    bigint& operator=(long long val)
-    {
-        content = std::to_string(val);
-        return *this;
-    }
-    bigint& operator=(int val)
-    {
-        content = std::to_string(val);
-        return *this;
-    }
 };
-struct timestamp : only_content
+
+struct timestamp
 {
-    // 继承基类的构造函数
-    using only_content::only_content;
-    using only_content::operator=;
+    std::string content;
+
+    // // 转换操作符
+    // operator std::string() const
+    // {
+    //     return content;
+    // }
+
+    // 赋值操作符
+    timestamp& operator=(const std::string& str)
+    {
+        content = str;
+        return *this;
+    }
+    
+    timestamp& operator=(std::string&& str)
+    {
+        content = std::move(str);
+        return *this;
+    }
+
+    timestamp& operator=(const char* str)
+    {
+        content = str;
+        return *this;
+    }
 
     static constexpr const char* sql_type()
     {
