@@ -223,6 +223,30 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
                                       file.write(std::string(content)); // 移除不必要的std::move
                                   }
                               });
+            addCallbackFormat(Format{"/", Format::Type::same},
+                              [&static_files](serverFile& file)
+                              {
+                                  auto path = file.getContent().at("path");
+                                  if (path == "/")
+                                  {
+                                      path = "index.html";
+                                  }
+                                  else
+                                  {
+                                      path = &path.data()[1];
+                                  }
+                                  // 转换为本地文件系统路径
+                                  path = platform::fixPath(path);
+                                  auto& Localfile = static_files.get(path);
+                                  std::string_view content = Localfile.read();
+                                  if (content != "")
+                                  {
+                                      std::string head = HttpServerUtil::makeHttpHead(
+                                          200, content, HttpServerUtil::judge_file_type(path));
+                                      file.write(std::move(head));
+                                      file.write(std::string(content)); // 移除不必要的std::move
+                                  }
+                              });
         }
     }
 }

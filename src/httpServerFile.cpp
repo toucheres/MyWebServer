@@ -1,50 +1,52 @@
-#include "serverFile.h"
 #include "httpServerFile.h"
 #include "protocol_constants.h" // 新增包含
+#include "serverFile.h"
 #include <algorithm>
-#include <string>
 #include <filesystem>
-#include <unordered_map>
-#include <sstream>
 #include <iomanip>
+#include <sstream>
+#include <string>
+#include <unordered_map>
 
 // 初始化静态成员，自动注册HTTP协议处理函数
 bool HttpServerUtil::autoRegistered = HttpServerUtil::initialize();
 
 // 初始化方法，注册HTTP协议处理函数
-bool HttpServerUtil::initialize() {
-    return serverFile::registerProtocolHandler(Protocol::HTTP, HttpServerUtil::httpEventloop); // 使用 Protocol 枚举
+bool HttpServerUtil::initialize()
+{
+    return serverFile::registerProtocolHandler(Protocol::HTTP,
+                                               HttpServerUtil::httpEventloop); // 使用 Protocol 枚举
 }
 
 // 添加URL解码函数实现
-std::string HttpServerUtil::urlDecode(const std::string& encoded) 
+std::string HttpServerUtil::urlDecode(const std::string& encoded)
 {
     std::string result;
     result.reserve(encoded.length());
 
-    for (size_t i = 0; i < encoded.length(); ++i) 
+    for (size_t i = 0; i < encoded.length(); ++i)
     {
-        if (encoded[i] == '%' && i + 2 < encoded.length()) 
+        if (encoded[i] == '%' && i + 2 < encoded.length())
         {
             // 从十六进制字符转换为整数值
             int value;
             std::istringstream iss(encoded.substr(i + 1, 2));
-            if (iss >> std::hex >> value) 
+            if (iss >> std::hex >> value)
             {
                 result += static_cast<char>(value);
-                i += 2;  // 跳过已处理的两个十六进制字符
-            } 
-            else 
+                i += 2; // 跳过已处理的两个十六进制字符
+            }
+            else
             {
                 result += encoded[i];
             }
-        } 
-        else if (encoded[i] == '+') 
+        }
+        else if (encoded[i] == '+')
         {
             // 将加号转换为空格
             result += ' ';
-        } 
-        else 
+        }
+        else
         {
             result += encoded[i];
         }
@@ -54,39 +56,43 @@ std::string HttpServerUtil::urlDecode(const std::string& encoded)
 }
 
 // 添加分块传输辅助函数实现
-std::string HttpServerUtil::createChunkedResponse(const std::string& data) 
+std::string HttpServerUtil::createChunkedResponse(const std::string& data)
 {
-    if (data.empty()) {
+    if (data.empty())
+    {
         return createChunkedEnd();
     }
-    
+
     std::ostringstream oss;
     oss << std::hex << data.length() << "\r\n";
     oss << data << "\r\n";
     return oss.str();
 }
 
-std::string HttpServerUtil::createChunkedEnd() 
+std::string HttpServerUtil::createChunkedEnd()
 {
     return "0\r\n\r\n";
 }
 
-size_t HttpServerUtil::parseChunkSize(const std::string& chunkSizeLine) 
+size_t HttpServerUtil::parseChunkSize(const std::string& chunkSizeLine)
 {
     size_t pos = chunkSizeLine.find(';'); // 忽略可能的chunk扩展
-    std::string sizeStr = (pos != std::string::npos) ? 
-                         chunkSizeLine.substr(0, pos) : chunkSizeLine;
-    
+    std::string sizeStr = (pos != std::string::npos) ? chunkSizeLine.substr(0, pos) : chunkSizeLine;
+
     // 移除前后空白字符
     size_t start = sizeStr.find_first_not_of(" \t");
     size_t end = sizeStr.find_last_not_of(" \t\r\n");
-    if (start != std::string::npos && end != std::string::npos) {
+    if (start != std::string::npos && end != std::string::npos)
+    {
         sizeStr = sizeStr.substr(start, end - start + 1);
     }
-    
-    try {
+
+    try
+    {
         return std::stoul(sizeStr, nullptr, 16); // 十六进制解析
-    } catch (...) {
+    }
+    catch (...)
+    {
         return 0;
     }
 }
@@ -102,7 +108,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
     size_t content_length = 0;
     size_t body_read = 0;
     std::string body_buffer;
-    
+
     // 分块传输相关变量
     bool is_chunked = false;
     size_t current_chunk_size = 0;
@@ -120,7 +126,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             co_yield {};
             continue;
         }
-        
+
         if (sfile.getSocketStatus() == SocketStatus::WRONG)
         {
             self->setFileState(false);
@@ -145,9 +151,11 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 if (first_space != std::string_view::npos && second_space != std::string_view::npos)
                 {
                     method = std::string(tp.substr(0, first_space));
-                    std::string encodedPath = std::string(tp.substr(first_space + 1, second_space - first_space - 1));
+                    std::string encodedPath =
+                        std::string(tp.substr(first_space + 1, second_space - first_space - 1));
                     path = urlDecode(encodedPath);
-                    version = std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
+                    version =
+                        std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
 
                     self->getContent()["method"] = method;
                     self->getContent()["path"] = path;
@@ -168,7 +176,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             {
                 // 检查是否为分块传输
                 is_chunked = isChunkedRequest(self->getContent());
-                
+
                 // 对于有请求体的方法（POST, PUT, PATCH等）
                 if (method == "POST" || method == "PUT" || method == "PATCH")
                 {
@@ -230,8 +238,17 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
         case ParseState::BODY:
             if (tp.empty())
             {
-                co_yield {};
-                continue;
+                // 正文可能不以\r\n结尾
+                auto lefted = sfile.read_num(content_length);
+                if(lefted!="")
+                {
+                    tp = lefted;
+                }
+                else
+                {
+                    co_yield {};
+                    continue;
+                }
             }
             if (body_read < content_length)
             {
@@ -245,7 +262,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 }
             }
             break;
-            
+
         case ParseState::CHUNKED_SIZE:
             if (tp.empty())
             {
@@ -257,7 +274,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 std::string chunk_size_line(tp.data(), tp.length());
                 current_chunk_size = parseChunkSize(chunk_size_line);
                 chunk_data_read = 0;
-                
+
                 if (current_chunk_size == 0)
                 {
                     // 最后一个分块，进入尾部解析状态
@@ -269,23 +286,23 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 }
             }
             break;
-            
+
         case ParseState::CHUNKED_DATA:
             // 对于分块数据，需要精确读取指定字节数
             if (chunk_data_read < current_chunk_size)
             {
                 size_t remaining = current_chunk_size - chunk_data_read;
                 std::string_view chunk_data = sfile.read_num(remaining);
-                
+
                 if (chunk_data.empty())
                 {
                     co_yield {};
                     continue;
                 }
-                
+
                 chunked_body.append(chunk_data.data(), chunk_data.size());
                 chunk_data_read += chunk_data.size();
-                
+
                 if (chunk_data_read >= current_chunk_size)
                 {
                     // 当前分块读取完成，读取分块后的CRLF
@@ -298,7 +315,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 }
             }
             break;
-            
+
         case ParseState::CHUNKED_TRAILER:
             if (tp.empty())
             {
@@ -338,7 +355,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             if (sfile.getSocketStatus() != SocketStatus::WRONG)
             {
                 self->handle();
-                
+
                 // 重置状态变量
                 state = ParseState::REQUEST_LINE;
                 content_length = 0;
@@ -358,7 +375,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
 
 // 从HttpServer移动过来的HTTP协议相关函数
 std::string HttpServerUtil::makeHttpHead(int status, std::string_view content,
-                                      std::string_view content_type)
+                                         std::string_view content_type)
 {
     std::string response = "";
     response.append("HTTP/1.1 ");
@@ -380,7 +397,8 @@ std::string HttpServerUtil::makeHttpHead(int status, std::string_view content,
 }
 
 std::string HttpServerUtil::makeHttp(int status, std::string_view content,
-                                     std::string_view content_type){
+                                     std::string_view content_type)
+{
     auto head = HttpServerUtil::makeHttpHead(status, content, content_type);
     return head + std::string(content);
 }
@@ -412,7 +430,8 @@ std::string HttpServerUtil::judge_file_type(std::string_view path)
 HttpResponse::HttpResponse(size_t status, std::string httptype, std::string servername)
     : http_version_(std::move(httptype)), status_code_(status)
 {
-    if (status_num_string.count(status)) {
+    if (status_num_string.count(status))
+    {
         reason_phrase_ = status_num_string[status];
     }
     headers_["Server"] = std::move(servername);
@@ -443,9 +462,12 @@ HttpResponse& HttpResponse::enableChunked()
 
 HttpResponse& HttpResponse::addChunk(const std::string& chunk_data)
 {
-    if (chunked_mode_) {
+    if (chunked_mode_)
+    {
         body_.append(HttpServerUtil::createChunkedResponse(chunk_data));
-    } else {
+    }
+    else
+    {
         body_.append(chunk_data);
     }
     return *this;
@@ -453,7 +475,8 @@ HttpResponse& HttpResponse::addChunk(const std::string& chunk_data)
 
 HttpResponse& HttpResponse::endChunked()
 {
-    if (chunked_mode_) {
+    if (chunked_mode_)
+    {
         body_.append(HttpServerUtil::createChunkedEnd());
     }
     return *this;
@@ -463,30 +486,33 @@ HttpResponse& HttpResponse::endChunked()
 bool HttpServerUtil::isChunkedRequest(const std::map<std::string, std::string>& headers)
 {
     auto it = headers.find("transfer-encoding");
-    if (it != headers.end()) {
+    if (it != headers.end())
+    {
         std::string transfer_encoding = it->second;
-        std::transform(transfer_encoding.begin(), transfer_encoding.end(), 
-                     transfer_encoding.begin(), [](unsigned char c) { return std::tolower(c); });
+        std::transform(transfer_encoding.begin(), transfer_encoding.end(),
+                       transfer_encoding.begin(), [](unsigned char c) { return std::tolower(c); });
         return transfer_encoding.find("chunked") != std::string::npos;
     }
     return false;
 }
 
 // 新增：创建分块传输请求头
-std::string HttpServerUtil::createChunkedRequest(const std::string& method, const std::string& path, 
-                                                const std::map<std::string, std::string>& headers)
+std::string HttpServerUtil::createChunkedRequest(const std::string& method, const std::string& path,
+                                                 const std::map<std::string, std::string>& headers)
 {
     std::ostringstream oss;
     oss << method << " " << path << " HTTP/1.1\r\n";
     oss << "Transfer-Encoding: chunked\r\n";
-    
-    for (const auto& header : headers) {
+
+    for (const auto& header : headers)
+    {
         // 避免重复设置Transfer-Encoding和Content-Length
-        if (header.first != "transfer-encoding" && header.first != "content-length") {
+        if (header.first != "transfer-encoding" && header.first != "content-length")
+        {
             oss << header.first << ": " << header.second << "\r\n";
         }
     }
-    
+
     oss << "\r\n";
     return oss.str();
 }
@@ -504,7 +530,8 @@ std::string HttpServerUtil::endChunkedRequest()
 }
 
 // 实现获取文件缓存的方法
-LocalFiles& HttpResponse::getFileCache() {
+LocalFiles& HttpResponse::getFileCache()
+{
     static LocalFiles fileCache;
     return fileCache;
 }
@@ -514,22 +541,28 @@ HttpResponse HttpResponse::formLocalFile(std::string path, std::string type)
     // 使用文件缓存获取文件内容
     auto& fileCache = getFileCache();
     LocalFile& file = fileCache.get(platform::fixPath(path)); // Fix path for local system
-    std::string_view file_content_view = file.read(); // Renamed to avoid conflict
-    
-    if (!file_content_view.empty()) {
+    std::string_view file_content_view = file.read();         // Renamed to avoid conflict
+
+    if (!file_content_view.empty())
+    {
         // 文件存在且有内容
         HttpResponse response(200);
         response.with_content(std::string(file_content_view), type);
         return response;
-    } else {
+    }
+    else
+    {
         // 文件不存在或为空
         HttpResponse response(404);
         // Try to load a custom 404.html page
         LocalFile& not_found_page = fileCache.get(platform::fixPath("404.html"));
         std::string_view not_found_content = not_found_page.read();
-        if (!not_found_content.empty()) {
+        if (!not_found_content.empty())
+        {
             response.with_content(std::string(not_found_content), "text/html;charset=utf-8");
-        } else {
+        }
+        else
+        {
             response.with_content("File not found: " + path, "text/plain;charset=utf-8");
         }
         return response;
@@ -546,13 +579,15 @@ HttpResponse::operator std::string()
 {
     std::ostringstream oss;
     oss << http_version_ << " " << status_code_ << " " << reason_phrase_ << "\r\n";
-    
+
     // 如果不是分块模式且没有设置Content-Length，自动设置
-    if (!chunked_mode_ && headers_.find("Content-Length") == headers_.end()) {
+    if (!chunked_mode_ && headers_.find("Content-Length") == headers_.end())
+    {
         headers_["Content-Length"] = std::to_string(body_.length());
     }
-    
-    for (const auto& header : headers_) {
+
+    for (const auto& header : headers_)
+    {
         oss << header.first << ": " << header.second << "\r\n";
     }
     oss << "\r\n";

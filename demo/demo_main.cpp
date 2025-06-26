@@ -1,4 +1,5 @@
 #include "corutine.hpp"
+#include "demo/getmessage.hpp"
 #include "format.h"
 #include "http.h"
 #include "httpServerFile.h"
@@ -9,11 +10,11 @@
 #include "serverFile.h"
 #include "stdiomanager.hpp"
 #include "users.h"
+#include "webSocketFile.h"
 #include <cstdlib>
 #include <iostream>
 #include <string>
 #include <string_view>
-
 HttpServer server;
 LocalFiles LocalFileCache;
 MySQLHandle sql{"localhost", "webserver", "WebServer@2025", "chat_db"};
@@ -57,7 +58,7 @@ int main()
         [](serverFile& connection)
         {
             auto ret = Format{"/login/%[^/]/%s", Format::Type::scanf}.parse(
-                connection.getContent()["path"]);
+                connection.getContent()[HttpServerUtil::ContentKey::path]);
             if (ret)
             {
                 auto context = *ret;
@@ -66,12 +67,24 @@ int main()
                 auto logined = login(username, password);
                 if (logined.size())
                 {
-                    auto res = HttpServerUtil::makeHttpHead(
-                        200,
-                        std::string_view{reinterpret_cast<char*>(logined.data()), logined.size()});
-                    connection.write(res);
-                    connection.write(
-                        std::string{reinterpret_cast<char*>(logined.data()), logined.size()});
+                    // 构建包含Set-Cookie头的HTTP响应
+                    std::string cookie_value{reinterpret_cast<char*>(logined.data()),
+                                             logined.size()};
+                    std::string response_body = "Login successful";
+
+                    // 手动构建HTTP响应，包含Set-Cookie头
+                    std::string http_response = "HTTP/1.1 200 OK\r\n";
+                    http_response += "Content-Type: text/plain\r\n";
+                    http_response +=
+                        "Content-Length: " + std::to_string(response_body.length()) + "\r\n";
+                    http_response +=
+                        "Set-Cookie: session=" + cookie_value + "; Path=/; HttpOnly\r\n";
+                    http_response += "Access-Control-Allow-Credentials: true\r\n";
+                    http_response += "Access-Control-Allow-Origin: http://localhost:8080\r\n";
+                    http_response += "\r\n";
+                    http_response += response_body;
+
+                    connection.write(http_response);
                 }
                 else
                 {
@@ -83,27 +96,143 @@ int main()
                 connection.write(HttpResponse{400});
             }
         });
-    server.addCallbackFormat(Format{"/do", Format::Type::same},
+    server.addCallbackFormat(Format{"/ws", Format::Type::same},
                              [](serverFile& file)
                              {
-                                 std::cout << "ok" << '\n';
+                                 // std::cout << "ok" << '\n';
                                  auto cookie = file.getContent()["cookie"];
-                                 auto ret = check(cookie);
-                                 file << HttpServerUtil::makeHttp(
-                                     200, std::format("your name is: {}, your password is {}",
-                                                      ret.username.content, ret.password.content));
+                                 std::cout << "Received cookie: " << cookie << std::endl;
+
+                                 // 从cookie字符串中提取session值
+                                 std::string session_cookie;
+                                 size_t session_pos = cookie.find("session=");
+                                 if (session_pos != std::string::npos)
+                                 {
+                                     size_t start = session_pos + 8; // "session="的长度
+                                     size_t end = cookie.find(";", start);
+                                     if (end == std::string::npos)
+                                     {
+                                         end = cookie.length();
+                                     }
+                                     session_cookie = cookie.substr(start, end - start);
+                                 }
+
+                                 std::cout << "Extracted session: " << session_cookie << std::endl;
+
+                                 auto ret = check(session_cookie);
+                                 if (!ret)
+                                 {
+                                     file << HttpResponse{403};
+                                 }
+                                 else
+                                 {
+                                     if (file.getAgreementType() == Protocol::WebSocket)
+                                     {
+                                         // ...
+                                         file.getContent();
+                                     }
+                                     else if (WebSocketUtil::shouldbeUpdataToWS(file))
+                                     {
+                                         file << WebSocketUtil::makeWebSocketHandshake(file);
+                                     }
+                                     else
+                                     {
+                                         file << HttpResponse{404};
+                                     }
+                                 }
                              });
+    server.addCallbackFormat(
+        Format{"/do", Format::Type::same},
+        [](serverFile& file)
+        {
+            std::cout << "ok" << '\n';
+            auto cookie = file.getContent()[HttpServerUtil::ContentKey::cookie];
+            std::cout << "Received cookie in /do: " << cookie << std::endl;
+
+            // 从cookie字符串中提取session值
+            std::string session_cookie;
+            size_t session_pos = cookie.find("session=");
+            if (session_pos != std::string::npos)
+            {
+                size_t start = session_pos + 8; // "session="的长度
+                size_t end = cookie.find(";", start);
+                if (end == std::string::npos)
+                {
+                    end = cookie.length();
+                }
+                session_cookie = cookie.substr(start, end - start);
+            }
+
+            std::cout << "Extracted session in /do: " << session_cookie << std::endl;
+
+            auto ret = check(session_cookie);
+            if (!ret)
+            {
+                file << HttpResponse{403};
+            }
+            else
+            {
+                file << HttpServerUtil::makeHttp(
+                    200, std::format("your name is: {}, your password is {}", ret->username.content,
+                                     ret->password.content));
+            }
+        });
+    server.addCallbackFormat(Format{"/getmessages", Format::Type::same},
+                             [](serverFile& file)
+                             {
+                                 // std::cout << "ok" << '\n';
+                                 auto cookie = file.getContent()["cookie"];
+                                 std::cout << "Received cookie: " << cookie << std::endl;
+
+                                 // 从cookie字符串中提取session值
+                                 std::string session_cookie;
+                                 size_t session_pos = cookie.find("session=");
+                                 if (session_pos != std::string::npos)
+                                 {
+                                     size_t start = session_pos + 8; // "session="的长度
+                                     size_t end = cookie.find(";", start);
+                                     if (end == std::string::npos)
+                                     {
+                                         end = cookie.length();
+                                     }
+                                     session_cookie = cookie.substr(start, end - start);
+                                 }
+
+                                 std::cout << "Extracted session: " << session_cookie << std::endl;
+
+                                 auto ret = check(session_cookie);
+                                 if (!ret)
+                                 {
+                                     file << HttpResponse{403};
+                                 }
+                                 else
+                                 {
+                                     auto ret = getmessage();
+                                     std::string res;
+                                     res.reserve(2048);
+                                     for (auto& each : ret)
+                                     {
+                                         res += json::from(each.to_struct());
+                                         res += '\n';
+                                     }
+                                     file << HttpServerUtil::makeHttp(200, res);
+                                 }
+                             });
+
     server.addCallbackFormat(
         Format{"/api%s", Format::Type::scanf},
         [](serverFile& file)
         {
-            auto cookie = file.getContent()["cookie"];
+            auto cookie = file.getContent()[HttpServerUtil::ContentKey::cookie];
             auto ret = check(cookie);
-            // std::cout << file.socketfile_.handle_.context->content.data() << '\n';
-            if (ret.username != "")
+            if (!ret)
             {
-                auto path_parse_result =
-                    Format{"/api%s", Format::Type::scanf}.parse(file.getContent()["path"]);
+                file.write(HttpServerUtil::makeHttp(403, ""));
+            }
+            else
+            {
+                auto path_parse_result = Format{"/api%s", Format::Type::scanf}.parse(
+                    file.getContent()[HttpServerUtil::ContentKey::path]);
                 if (path_parse_result)
                 {
                     auto api_path = std::get<std::string>((*path_parse_result)[0]);
@@ -114,9 +243,56 @@ int main()
                     file.write(HttpResponse{400});
                 }
             }
+        });
+    server.addCallbackFormat(
+        Format{"/register", Format::Type::same},
+        [](serverFile& file)
+        {
+            auto content = file.getContent()[HttpServerUtil::ContentKey::postcontent];
+            auto ret =
+                Format{"name = '%[^']', password = '%[^']'", Format::Type::scanf}.parse(content);
+            if (!ret)
+            {
+                file << HttpResponse{400};
+            }
             else
             {
-                file.write(HttpServerUtil::makeHttp(403, ""));
+                if (register_user(std::get<std::string>((*ret)[0]),
+                                  std::get<std::string>((*ret)[1])))
+                {
+                    file << HttpServerUtil::makeHttp(
+                        200, std::format("your name is: {}, password is: {}",
+                                         std::get<std::string>((*ret)[0]),
+                                         std::get<std::string>((*ret)[1])));
+                }
+                else
+                {
+                    file << HttpResponse{401};
+                }
+            }
+        });
+    server.addCallbackFormat(
+        Format{"/deregistration", Format::Type::same},
+        [](serverFile& file)
+        {
+            auto content = file.getContent()[HttpServerUtil::ContentKey::postcontent];
+            auto ret =
+                Format{"name = '%[^']', password = '%[^']'", Format::Type::scanf}.parse(content);
+            if (!ret)
+            {
+                file << HttpResponse{400};
+            }
+            else
+            {
+                if (deregistration(std::get<std::string>((*ret)[0]),
+                                   std::get<std::string>((*ret)[1])))
+                {
+                    file << HttpServerUtil::makeHttp(200, "ok");
+                }
+                else
+                {
+                    file << HttpResponse{401};
+                }
             }
         });
     auto& coru = Co_Start_Manager::getInstance();
@@ -141,7 +317,7 @@ int main()
 //     in2 in2_;
 // };
 
-// int main()
+// int main_()
 // {
 //     {
 //         // json::defultOpt.flatten_single_member = false;
@@ -151,7 +327,7 @@ int main()
 //         // std::cout << json::from(json::to<test>(json::from(obj))) << '\n';
 
 //         // auto obj_ = users{.created_at = "123", .id = 12, .password = "we", .username =
-//         "sadf"};
+//         // "sadf"};
 //         // std::cout << json::from(obj_) << '\n';
 //         // std::cout << json::from(json::to<users>(json::from(obj_))) << '\n';
 //     }
@@ -163,8 +339,9 @@ int main()
 //         // std::cout << json::from(json::to<test>(json::from(obj))) << '\n';
 //         json::defultOpt.flatten_single_member = true;
 //         json test;
-//         test.content = "{\"id\":0,\"username\":"
-//                        "\"testname\",\"password\":\"testpassword\",\"created_at\":\"testc\"}";
+//         // test.content = "{\"id\":0,\"username\":"
+//         //                "\"testname\",\"password\":\"testpassword\",\"created_at\":\"testc\"}";
+//         test.content = "";
 //         auto ret = json::to<users>(test);
 //         users u;
 //         u.id = 0;

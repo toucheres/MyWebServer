@@ -13,6 +13,16 @@ class WebSocketUtil
     inline static bool callcbackWhenClose = false;
 
   public:
+    class ContentKey
+    {
+      public:
+        static constexpr std::string method = "method";
+        static constexpr std::string path = "path";
+        static constexpr std::string version = "version";
+        static constexpr std::string content_length = "content-length";
+        static constexpr std::string postcontent = "postcontent";
+        static constexpr std::string cookie = "cookie";
+    };
     // WebSocket操作码枚举
     enum class WebSocketOpcode // Changed to enum class
     {
