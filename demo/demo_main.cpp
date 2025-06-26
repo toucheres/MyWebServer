@@ -1,6 +1,6 @@
 #include "corutine.hpp"
-#include "demo/getmessage.hpp"
 #include "format.h"
+#include "getmessage.hpp"
 #include "http.h"
 #include "httpServerFile.h"
 #include "json.hpp"
@@ -96,58 +96,13 @@ int main()
                 connection.write(HttpResponse{400});
             }
         });
-    server.addCallbackFormat(Format{"/ws", Format::Type::same},
-                             [](serverFile& file)
-                             {
-                                 // std::cout << "ok" << '\n';
-                                 auto cookie = file.getContent()["cookie"];
-                                 std::cout << "Received cookie: " << cookie << std::endl;
-
-                                 // 从cookie字符串中提取session值
-                                 std::string session_cookie;
-                                 size_t session_pos = cookie.find("session=");
-                                 if (session_pos != std::string::npos)
-                                 {
-                                     size_t start = session_pos + 8; // "session="的长度
-                                     size_t end = cookie.find(";", start);
-                                     if (end == std::string::npos)
-                                     {
-                                         end = cookie.length();
-                                     }
-                                     session_cookie = cookie.substr(start, end - start);
-                                 }
-
-                                 std::cout << "Extracted session: " << session_cookie << std::endl;
-
-                                 auto ret = check(session_cookie);
-                                 if (!ret)
-                                 {
-                                     file << HttpResponse{403};
-                                 }
-                                 else
-                                 {
-                                     if (file.getAgreementType() == Protocol::WebSocket)
-                                     {
-                                         // ...
-                                         file.getContent();
-                                     }
-                                     else if (WebSocketUtil::shouldbeUpdataToWS(file))
-                                     {
-                                         file << WebSocketUtil::makeWebSocketHandshake(file);
-                                     }
-                                     else
-                                     {
-                                         file << HttpResponse{404};
-                                     }
-                                 }
-                             });
     server.addCallbackFormat(
-        Format{"/do", Format::Type::same},
+        Format{"/ws", Format::Type::same},
         [](serverFile& file)
         {
-            std::cout << "ok" << '\n';
-            auto cookie = file.getContent()[HttpServerUtil::ContentKey::cookie];
-            std::cout << "Received cookie in /do: " << cookie << std::endl;
+            // std::cout << "ok" << '\n';
+            auto cookie = file.getContent()["cookie"];
+            // std::cout << "Received cookie: " << cookie << std::endl;
 
             // 从cookie字符串中提取session值
             std::string session_cookie;
@@ -163,7 +118,71 @@ int main()
                 session_cookie = cookie.substr(start, end - start);
             }
 
-            std::cout << "Extracted session in /do: " << session_cookie << std::endl;
+            auto ret = check(session_cookie);
+            if (!ret)
+            {
+                file << HttpResponse{403};
+            }
+            else
+            {
+                if (file.getAgreementType() == Protocol::WebSocket)
+                {
+                    // ...
+                    auto mes = file.getContent()[WebSocketUtil::ContentKey::message];
+                    auto ret =
+                        Format("username = %[^,], content = %s", Format::Type::scanf).parse(mes);
+                    if (ret)
+                    {
+                        auto name = std::get<std::string>((*ret)[0]);
+                        auto con = std::get<std::string>((*ret)[1]);
+                        messages mess;
+                        mess.sender = name;
+                        mess.content = con;
+                        insertmessage(mess);
+                        for (auto& each : server.getfilemap())
+                        {
+                            if (each.second->getContent()["inws"] == "ok")
+                            {
+                                (*each.second) << WebSocketResponse::text(mes);
+                            }
+                        }
+                    }
+                }
+                else if (WebSocketUtil::shouldbeUpdataToWS(file))
+                {
+                    file << WebSocketUtil::makeWebSocketHandshake(file);
+                    file.upgradeProtocol(Protocol::WebSocket);
+                    file.getContent()["inws"] = "ok";
+                }
+                else
+                {
+                    file << HttpResponse{404};
+                }
+            }
+        });
+    server.addCallbackFormat(
+        Format{"/do", Format::Type::same},
+        [](serverFile& file)
+        {
+            // std::cout << "ok" << '\n';
+            auto cookie = file.getContent()[HttpServerUtil::ContentKey::cookie];
+            // std::cout << "Received cookie in /do: " << cookie << std::endl;
+
+            // 从cookie字符串中提取session值
+            std::string session_cookie;
+            size_t session_pos = cookie.find("session=");
+            if (session_pos != std::string::npos)
+            {
+                size_t start = session_pos + 8; // "session="的长度
+                size_t end = cookie.find(";", start);
+                if (end == std::string::npos)
+                {
+                    end = cookie.length();
+                }
+                session_cookie = cookie.substr(start, end - start);
+            }
+
+            // std::cout << "Extracted session in /do: " << session_cookie << std::endl;
 
             auto ret = check(session_cookie);
             if (!ret)
@@ -182,7 +201,7 @@ int main()
                              {
                                  // std::cout << "ok" << '\n';
                                  auto cookie = file.getContent()["cookie"];
-                                 std::cout << "Received cookie: " << cookie << std::endl;
+                                 // std::cout << "Received cookie: " << cookie << std::endl;
 
                                  // 从cookie字符串中提取session值
                                  std::string session_cookie;
@@ -198,7 +217,7 @@ int main()
                                      session_cookie = cookie.substr(start, end - start);
                                  }
 
-                                 std::cout << "Extracted session: " << session_cookie << std::endl;
+                                 // std::cout << "Extracted session: " << session_cookie << std::endl;
 
                                  auto ret = check(session_cookie);
                                  if (!ret)
@@ -224,7 +243,23 @@ int main()
         [](serverFile& file)
         {
             auto cookie = file.getContent()[HttpServerUtil::ContentKey::cookie];
-            auto ret = check(cookie);
+            // std::cout << "Received cookie in /do: " << cookie << std::endl;
+
+            // 从cookie字符串中提取session值
+            std::string session_cookie;
+            size_t session_pos = cookie.find("session=");
+            if (session_pos != std::string::npos)
+            {
+                size_t start = session_pos + 8; // "session="的长度
+                size_t end = cookie.find(";", start);
+                if (end == std::string::npos)
+                {
+                    end = cookie.length();
+                }
+                session_cookie = cookie.substr(start, end - start);
+            }
+            // auto cookie_ = file.getContent()[HttpServerUtil::ContentKey::cookie];
+            auto ret = check(session_cookie);
             if (!ret)
             {
                 file.write(HttpServerUtil::makeHttp(403, ""));

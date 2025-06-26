@@ -105,14 +105,14 @@ target_link_libraries(chat_demo PRIVATE
     # 不需要重复链接yalantinglibs，因为webserver_lib已经PUBLIC链接了
 )
 
-# 复制demo文件夹下的静态资源到输出目录
-if(EXISTS ${CMAKE_SOURCE_DIR}/demo/index.html)
-    add_custom_command(TARGET chat_demo POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_SOURCE_DIR}/demo/index.html
-            $<TARGET_FILE_DIR:chat_demo>/index.html
-    )
-endif()
+# # 复制demo文件夹下的静态资源到输出目录
+# if(EXISTS ${CMAKE_SOURCE_DIR}/demo/index.html)
+#     add_custom_command(TARGET chat_demo POST_BUILD
+#         COMMAND ${CMAKE_COMMAND} -E copy_if_different
+#             ${CMAKE_SOURCE_DIR}/demo/index.html
+#             $<TARGET_FILE_DIR:chat_demo>/index.html
+#     )
+# endif()
 
 # 添加测试程序到构建配置
 if(EXISTS ${CMAKE_SOURCE_DIR}/test/test_parameterized_query.cpp)

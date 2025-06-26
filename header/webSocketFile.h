@@ -1,7 +1,7 @@
 #pragma once
 #include "corutine.hpp"
-#include "serverFile.h"
 #include "protocol_constants.h" // 新增包含
+#include "serverFile.h"
 #include <string>
 
 // WebSocket工具类 - 只包含静态方法和常量
@@ -16,12 +16,15 @@ class WebSocketUtil
     class ContentKey
     {
       public:
-        static constexpr std::string method = "method";
-        static constexpr std::string path = "path";
-        static constexpr std::string version = "version";
-        static constexpr std::string content_length = "content-length";
-        static constexpr std::string postcontent = "postcontent";
-        static constexpr std::string cookie = "cookie";
+        static constexpr std::string message = "message";
+        static constexpr std::string type = "type";
+        class CallbackType
+        {
+          public:
+            static constexpr std::string text = "text";
+            static constexpr std::string binary = "binary";
+            static constexpr std::string close = "close";
+        };
     };
     // WebSocket操作码枚举
     enum class WebSocketOpcode // Changed to enum class
