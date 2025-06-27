@@ -88,7 +88,6 @@ int main()
             {
                 if (file.getAgreementType() == Protocol::WebSocket)
                 {
-                    // ...
                     auto mes = file.getContent()[WebSocketUtil::ContentKey::message];
                     auto ret =
                         Format("username = %[^,], content = %s", Format::Type::scanf).parse(mes);
