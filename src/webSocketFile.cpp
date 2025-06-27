@@ -224,6 +224,17 @@ std::string WebSocketUtil::makeWebSocketHandshake(const serverFile& client)
     return WebSocketUtil::makeWebSocketHandshake(clientKey);
 }
 
+bool WebSocketUtil::tryUpToWs(serverFile& file)
+{
+    if (shouldbeUpdataToWS(file))
+    {
+        file << makeWebSocketHandshake(file);
+        file.upgradeProtocol(Protocol::WebSocket);
+        return true;
+    }
+    return false;
+}
+
 // 判断是否应该升级到WebSocket
 bool WebSocketUtil::shouldbeUpdataToWS(const serverFile& httpfile)
 {

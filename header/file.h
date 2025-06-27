@@ -27,10 +27,13 @@ struct LocalFile
     std::string path = "";
     size_t size = 0;
     std::string_view fileview;
+    bool useable = false;
 
   public:
     bool load(std::string& path);
-    std::string_view read();
+    std::string_view read() const;
+    std::string getPath() const;
+    operator bool() const;
     // std::string_view wirte();
     LocalFile(std::string a_path);
     LocalFile(LocalFile&& move);
@@ -48,7 +51,8 @@ struct SocketFile : public co_async
       public:
         friend SocketFile;
         socket_t fd = INVALID_SOCKET_VALUE; // 使用跨平台的socket类型
-        int getfd(){
+        int getfd()
+        {
             return fd;
         }
         // read

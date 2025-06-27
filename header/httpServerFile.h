@@ -14,15 +14,22 @@ struct HttpResponse
     std::map<std::string, std::string> headers_;
     std::string body_;
     bool chunked_mode_ = false; // 分块传输模式标志
+    static HttpResponse defult404;
 
   public:
+    static HttpResponse text(std::string content, size_t status = 200,
+                             std::string contenttype = "text/plain;charset=utf-8",
+                             std::string httptype = "HTTP/1.1");
+    static HttpResponse binary(std::string content, size_t status = 200,
+                               std::string contenttype = "application/octet-stream",
+                               std::string httptype = "HTTP/1.1");
+    static HttpResponse fromFileCache(const LocalFile& file);
+    static HttpResponse formLocalFile(std::string path, std::string type);
+    static HttpResponse formLocalFile(std::string path); // auto select type
     HttpResponse& addHeader(std::string key, std::string val);
     HttpResponse& with_content(std::string content, std::string type = "text/plain;charset=utf-8");
     HttpResponse(size_t status, std::string httptype = "HTTP/1.1",
                  std::string servername = default_servername);
-    static HttpResponse formLocalFile(std::string path, std::string type);
-    static HttpResponse formLocalFile(std::string path); // auto select type
-
     // 分块传输相关方法
     HttpResponse& enableChunked();
     HttpResponse& addChunk(const std::string& chunk_data);

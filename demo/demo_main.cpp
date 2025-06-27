@@ -6,52 +6,19 @@
 #include "json.hpp"
 #include "login.hpp"
 #include "message.h"
-#include "mysqlHandle.h"
 #include "serverFile.h"
 #include "stdiomanager.hpp"
 #include "users.h"
 #include "webSocketFile.h"
 #include <cstdlib>
-#include <iostream>
 #include <string>
-#include <string_view>
 HttpServer server;
 LocalFiles LocalFileCache;
-MySQLHandle sql{"localhost", "webserver", "WebServer@2025", "chat_db"};
 int main()
 {
+    // std::cout << std::format("http://localhost:{}", server.getPort()) << '\n';
     json::defultOpt.flatten_single_member = true;
     stdiolistener iol;
-    iol.on_user_input.connect(
-        [](std::string_view in)
-        {
-            std::cout << "get: " << in;
-            auto handle = enable_sql<messages>(sql);
-            if (in == "insert\n")
-            {
-                std::cout << "start insert\n";
-                handle.insert(messages{.sender = "testsender", .content = "testcontent"});
-            }
-            else if (in == "del\n")
-            {
-                std::cout << "start del\n";
-                auto ret_view = handle.select_where("sender = 'testsender'");
-                std::cout << "before: \n";
-                for (auto& each : ret_view)
-                {
-                    std::cout << json::from(each.to_struct()) << '\n';
-                }
-                std::cout << '\n';
-                handle.remove("sender = 'testsender'");
-                std::cout << "after: \n";
-                auto ret_view_a = handle.select_where("sender = 'testsender'");
-                for (auto& each : ret_view_a)
-                {
-                    std::cout << json::from(each.to_struct()) << '\n';
-                }
-                std::cout << '\n';
-            }
-        });
     server.autoLoginFile(LocalFileCache);
     server.addCallbackFormat(
         Format{"/login/%[^/]/%s", Format::Type::scanf},
@@ -67,33 +34,27 @@ int main()
                 auto logined = login(username, password);
                 if (logined.size())
                 {
-                    // 构建包含Set-Cookie头的HTTP响应
                     std::string cookie_value{reinterpret_cast<char*>(logined.data()),
                                              logined.size()};
-                    std::string response_body = "Login successful";
+                    auto httpres =
+                        HttpResponse{200}
+                            .with_content("Login successful")
+                            .addHeader("Set-Cookie",
+                                       "session=" + cookie_value + "; Path=/; HttpOnly")
+                            .addHeader("Access-Control-Allow-Credentials", "true")
+                            .addHeader("Access-Control-Allow-Origin",
+                                       std::format("http://localhost:{}", server.getPort()));
 
-                    // 手动构建HTTP响应，包含Set-Cookie头
-                    std::string http_response = "HTTP/1.1 200 OK\r\n";
-                    http_response += "Content-Type: text/plain\r\n";
-                    http_response +=
-                        "Content-Length: " + std::to_string(response_body.length()) + "\r\n";
-                    http_response +=
-                        "Set-Cookie: session=" + cookie_value + "; Path=/; HttpOnly\r\n";
-                    http_response += "Access-Control-Allow-Credentials: true\r\n";
-                    http_response += "Access-Control-Allow-Origin: http://localhost:8080\r\n";
-                    http_response += "\r\n";
-                    http_response += response_body;
-
-                    connection.write(http_response);
+                    connection << httpres;
                 }
                 else
                 {
-                    connection.write(HttpResponse{403});
+                    connection << HttpResponse{403};
                 }
             }
             else
             {
-                connection.write(HttpResponse{400});
+                connection << HttpResponse{400};
             }
         });
     server.addCallbackFormat(
@@ -148,10 +109,8 @@ int main()
                         }
                     }
                 }
-                else if (WebSocketUtil::shouldbeUpdataToWS(file))
+                else if (WebSocketUtil::tryUpToWs(file))
                 {
-                    file << WebSocketUtil::makeWebSocketHandshake(file);
-                    file.upgradeProtocol(Protocol::WebSocket);
                     file.getContent()["inws"] = "ok";
                 }
                 else
@@ -160,42 +119,40 @@ int main()
                 }
             }
         });
-    server.addCallbackFormat(
-        Format{"/do", Format::Type::same},
-        [](serverFile& file)
-        {
-            // std::cout << "ok" << '\n';
-            auto cookie = file.getContent()[HttpServerUtil::ContentKey::cookie];
-            // std::cout << "Received cookie in /do: " << cookie << std::endl;
+    server.addCallbackFormat(Format{"/do", Format::Type::same},
+                             [](serverFile& file)
+                             {
+                                 // std::cout << "ok" << '\n';
+                                 auto cookie =
+                                     file.getContent()[HttpServerUtil::ContentKey::cookie];
+                                 // std::cout << "Received cookie in /do: " << cookie << std::endl;
 
-            // 从cookie字符串中提取session值
-            std::string session_cookie;
-            size_t session_pos = cookie.find("session=");
-            if (session_pos != std::string::npos)
-            {
-                size_t start = session_pos + 8; // "session="的长度
-                size_t end = cookie.find(";", start);
-                if (end == std::string::npos)
-                {
-                    end = cookie.length();
-                }
-                session_cookie = cookie.substr(start, end - start);
-            }
+                                 // 从cookie字符串中提取session值
+                                 std::string session_cookie;
+                                 size_t session_pos = cookie.find("session=");
+                                 if (session_pos != std::string::npos)
+                                 {
+                                     size_t start = session_pos + 8; // "session="的长度
+                                     size_t end = cookie.find(";", start);
+                                     if (end == std::string::npos)
+                                     {
+                                         end = cookie.length();
+                                     }
+                                     session_cookie = cookie.substr(start, end - start);
+                                 }
 
-            // std::cout << "Extracted session in /do: " << session_cookie << std::endl;
-
-            auto ret = check(session_cookie);
-            if (!ret)
-            {
-                file << HttpResponse{403};
-            }
-            else
-            {
-                file << HttpServerUtil::makeHttp(
-                    200, std::format("your name is: {}, your password is {}", ret->username.content,
-                                     ret->password.content));
-            }
-        });
+                                 auto ret = check(session_cookie);
+                                 if (!ret)
+                                 {
+                                     file << HttpResponse{403};
+                                 }
+                                 else
+                                 {
+                                     file << HttpResponse::text(
+                                         std::format("your name is: {}, your password is {}",
+                                                     ret->username.content, ret->password.content));
+                                 }
+                             });
     server.addCallbackFormat(Format{"/getmessages", Format::Type::same},
                              [](serverFile& file)
                              {
@@ -217,7 +174,8 @@ int main()
                                      session_cookie = cookie.substr(start, end - start);
                                  }
 
-                                 // std::cout << "Extracted session: " << session_cookie << std::endl;
+                                 // std::cout << "Extracted session: " << session_cookie <<
+                                 // std::endl;
 
                                  auto ret = check(session_cookie);
                                  if (!ret)
@@ -234,7 +192,8 @@ int main()
                                          res += json::from(each.to_struct());
                                          res += '\n';
                                      }
-                                     file << HttpServerUtil::makeHttp(200, res);
+                                     // file << HttpServerUtil::makeHttp(200, res);
+                                     file << HttpResponse::text(res);
                                  }
                              });
 
@@ -262,7 +221,8 @@ int main()
             auto ret = check(session_cookie);
             if (!ret)
             {
-                file.write(HttpServerUtil::makeHttp(403, ""));
+                // file.write(HttpServerUtil::makeHttp(403, ""));
+                file << HttpResponse{403};
             }
             else
             {
@@ -295,10 +255,13 @@ int main()
                 if (register_user(std::get<std::string>((*ret)[0]),
                                   std::get<std::string>((*ret)[1])))
                 {
-                    file << HttpServerUtil::makeHttp(
-                        200, std::format("your name is: {}, password is: {}",
-                                         std::get<std::string>((*ret)[0]),
-                                         std::get<std::string>((*ret)[1])));
+                    // file << HttpServerUtil::makeHttp(
+                    //     200, std::format("your name is: {}, password is: {}",
+                    //                      std::get<std::string>((*ret)[0]),
+                    //                      std::get<std::string>((*ret)[1])));
+                    file << HttpResponse::text(std::format("your name is: {}, password is: {}",
+                                                           std::get<std::string>((*ret)[0]),
+                                                           std::get<std::string>((*ret)[1])));
                 }
                 else
                 {
@@ -322,7 +285,8 @@ int main()
                 if (deregistration(std::get<std::string>((*ret)[0]),
                                    std::get<std::string>((*ret)[1])))
                 {
-                    file << HttpServerUtil::makeHttp(200, "ok");
+                    // file << HttpServerUtil::makeHttp(200, "ok");
+                    file << HttpResponse::text("ok");
                 }
                 else
                 {
@@ -336,57 +300,3 @@ int main()
     coru.start();
     return 0;
 }
-
-// struct in2
-// {
-//     std::string in2;
-// };
-// struct in
-// {
-//     std::string in;
-// };
-// struct test
-// {
-//     std::string test_;
-//     in in_;
-//     in2 in2_;
-// };
-
-// int main_()
-// {
-//     {
-//         // json::defultOpt.flatten_single_member = false;
-
-//         // auto obj = test{.in2_ = "1", .in_ = "2", .test_ = "3"};
-//         // std::cout << json::from(obj) << '\n';
-//         // std::cout << json::from(json::to<test>(json::from(obj))) << '\n';
-
-//         // auto obj_ = users{.created_at = "123", .id = 12, .password = "we", .username =
-//         // "sadf"};
-//         // std::cout << json::from(obj_) << '\n';
-//         // std::cout << json::from(json::to<users>(json::from(obj_))) << '\n';
-//     }
-//     {
-//         // json::defultOpt.flatten_single_member = true;
-
-//         // auto obj = test{.in2_ = "1", .in_ = "2", .test_ = "3"};
-//         // std::cout << json::from(obj) << '\n';
-//         // std::cout << json::from(json::to<test>(json::from(obj))) << '\n';
-//         json::defultOpt.flatten_single_member = true;
-//         json test;
-//         // test.content = "{\"id\":0,\"username\":"
-//         //                "\"testname\",\"password\":\"testpassword\",\"created_at\":\"testc\"}";
-//         test.content = "";
-//         auto ret = json::to<users>(test);
-//         users u;
-//         u.id = 0;
-//         u.password = "12";
-//         u.username = "123";
-
-//         std::cout << test << '\n';
-//         std::cout << json::from(u) << '\n';
-
-//         std::cout << json::from(ret) << '\n';
-//         std::cout << json::from(json::to<users>(json::from(ret))) << '\n';
-//     }
-// }

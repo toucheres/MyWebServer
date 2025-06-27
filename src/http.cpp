@@ -251,6 +251,11 @@ void HttpServer::autoLoginFile(LocalFiles& static_files)
     }
 }
 
+uint16_t HttpServer::getPort() const
+{
+    return port;
+}
+
 void HttpServer::callback_callback(std::string format,serverFile& file)
 {
     for (auto call = callbacks_format.begin(); call != callbacks_format.end(); call++)

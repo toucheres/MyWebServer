@@ -1,18 +1,9 @@
 #pragma once
-#include "StringCrypto.h"
-#include "format.h"
-#include "json.hpp"
 #include "json_sql.hpp"
 #include "message.h"
 #include "mysqlHandle.h"
-#include "users.h"
-#include <array>
 #include <cstring>
 #include <format.h>
-#include <format>
-#include <iostream>
-#include <optional>
-#include <span>
 #include <string>
 #include <vector>
 inline auto getmessage()

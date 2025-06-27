@@ -47,7 +47,7 @@ class WebSocketUtil
     // WebSocket握手响应方法
     static std::string makeWebSocketHandshake(const std::string& clientKey);
     static std::string makeWebSocketHandshake(const serverFile& clientKey);
-
+    static bool tryUpToWs(serverFile& file);
     // WebSocket事件循环 - 从HttpServerFile移动过来的静态方法
     static Task<void, void> wsEventloop(serverFile* self);
 

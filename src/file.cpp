@@ -20,7 +20,10 @@ LocalFile::LocalFile(LocalFile&& move)
 {
     move.size = 0;
 }
-
+LocalFile::operator bool() const
+{
+    return useable;
+}
 bool LocalFile::load(std::string& path)
 {
     this->path = path;
@@ -44,12 +47,18 @@ bool LocalFile::load(std::string& path)
     }
 
     fileview = std::string_view(content.data(), size);
+    useable = true;
     return true;
 }
 
-std::string_view LocalFile::read()
+std::string_view LocalFile::read() const
 {
     return fileview;
+}
+
+std::string LocalFile::getPath() const
+{
+    return path;
 }
 
 // SocketFile实现
@@ -70,12 +79,14 @@ SocketFile::~SocketFile()
 
 SocketFile::SocketFile(SocketFile&& move) : handle_(std::move(move.handle_)) // Use private member
 {
-    move.handle_.get_context() = nullptr; // Access context via get_context() if needed, or ensure Task_Away handles this
+    move.handle_.get_context() =
+        nullptr; // Access context via get_context() if needed, or ensure Task_Away handles this
 }
 
 SocketFile& SocketFile::operator=(SocketFile&& move)
 {
-    if (this != &move) {
+    if (this != &move)
+    {
         this->handle_ = std::move(move.handle_); // Use private member
     }
     return *this;
@@ -86,15 +97,16 @@ bool SocketFile::load(int a_fd)
     handle_.get_context()->fd = a_fd;
     handle_.get_context()->r_left = 0;
     handle_.get_context()->r_right = 0;
-    handle_.get_context()->content.resize(4096); // 预分配缓冲区
+    handle_.get_context()->content.resize(4096);             // 预分配缓冲区
     handle_.get_context()->socket_status = SocketStatus::OK; // Initialize status
     return true;
 }
 
 void SocketFile::closeIt()
 {
-    if (handle_.get_context()) {
-      handle_.get_context()->socket_status = SocketStatus::WRONG;
+    if (handle_.get_context())
+    {
+        handle_.get_context()->socket_status = SocketStatus::WRONG;
     }
     this->eventGo(); // eventGo will handle the stop
 }
@@ -108,15 +120,14 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         {
             context->content.resize(context->content.size() * 2);
         }
-        
+
         // 设置非阻塞模式 - 使用平台无关的函数
         platform::setNonBlocking(context->fd);
-        
+
         // 读取数据 - 使用平台无关的接口
-        ssize_t n = platform::readSocket(context->fd, 
-                                        context->content.data() + context->r_right,
-                                        context->content.size() - context->r_right);
-        
+        ssize_t n = platform::readSocket(context->fd, context->content.data() + context->r_right,
+                                         context->content.size() - context->r_right);
+
         if (n > 0)
         {
             context->r_right += n;
@@ -140,22 +151,20 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                 // 读取错误 - 统一使用平台无关函数
                 if (platform::isConnectionReset(lastError))
                 {
-                    std::cerr << "client close: " 
-                              << platform::getErrorString(lastError)
+                    std::cerr << "client close: " << platform::getErrorString(lastError)
                               << ", fd: " << context->fd << std::endl;
                 }
                 else
                 {
-                    std::cerr << "Socket read error: " 
-                              << platform::getErrorString(lastError)
+                    std::cerr << "Socket read error: " << platform::getErrorString(lastError)
                               << ", fd: " << context->fd << std::endl;
                 }
                 context->socket_status = SocketStatus::WRONG; // Update status
                 co_yield {}; // Yield to allow state propagation before breaking loop
-                break; // Break from while loop on error
+                break;       // Break from while loop on error
             }
         }
-        
+
         // 写数据
         if (!context->waitingWrites.empty() &&
             (context->waitingWrites.front().w_right > context->waitingWrites.front().w_left))
@@ -164,12 +173,12 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
                 context->fd,
                 &context->waitingWrites.front().waitingWrite[context->waitingWrites.front().w_left],
                 context->waitingWrites.front().w_right - context->waitingWrites.front().w_left);
-            
+
             if (written == SOCKET_ERROR_RETURN)
             {
                 // 处理写入错误 - 跨平台处理
                 int lastError = platform::getLastError();
-                
+
                 // 特定错误处理
                 if (lastError == EINTR) // EINTR是一个跨平台的宏
                 {
@@ -240,12 +249,13 @@ const std::string_view SocketFile::read_added() const
 
 const std::string_view SocketFile::read_num(size_t num) const
 {
-    if (!handle_.get_context() || handle_.get_context()->r_left - handle_.get_context()->r_right < num) // Corrected logic
+    if (!handle_.get_context() ||
+        handle_.get_context()->r_left - handle_.get_context()->r_right < num) // Corrected logic
     {
-       return "";
+        return "";
     }
     auto tp = std::string_view{
-            handle_.get_context()->content.data() + handle_.get_context()->r_left, num};
+        handle_.get_context()->content.data() + handle_.get_context()->r_left, num};
     handle_.get_context()->r_left += num;
     return tp;
 }
@@ -257,7 +267,8 @@ const std::string_view SocketFile::read_line() const
 
 const std::string_view SocketFile::read_all() const
 {
-    if (!handle_.get_context()) return "";
+    if (!handle_.get_context())
+        return "";
     return std::string_view(handle_.get_context()->content.data(), handle_.get_context()->r_right);
 }
 
@@ -268,7 +279,8 @@ int SocketFile::getfd()
 
 const std::string_view SocketFile::read_until(const std::string_view delimiter) const
 {
-    if (!handle_.get_context()) return "";
+    if (!handle_.get_context())
+        return "";
     //[bug]有问题，像是pg导致的
     size_t& r_left = this->handle_.get_context()->r_left;
     size_t& r_right = this->handle_.get_context()->r_right;
@@ -331,12 +343,15 @@ void SocketFile::writeFile(const std::string file)
 
 bool SocketFile::setNonBlocking()
 {
-    if (!handle_.get_context()) return false;
+    if (!handle_.get_context())
+        return false;
     return platform::setNonBlocking(this->handle_.get_context()->fd);
 }
 
-SocketStatus SocketFile::getSocketStatus() const {
-    if (!handle_.get_context()) return SocketStatus::UNKNOWN;
+SocketStatus SocketFile::getSocketStatus() const
+{
+    if (!handle_.get_context())
+        return SocketStatus::UNKNOWN;
     return handle_.get_context()->socket_status;
 }
 

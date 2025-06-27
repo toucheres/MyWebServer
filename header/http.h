@@ -35,6 +35,7 @@ class HttpServer : public co_async
 
   public:
     void autoLoginFile(LocalFiles& static_files);
+    uint16_t getPort() const;
     void callback_callback(std::string format, serverFile& file);
     HttpServer(std::string ip_listening = "0.0.0.0", uint16_t port = 8080);
     ~HttpServer();

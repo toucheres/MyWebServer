@@ -240,7 +240,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             {
                 // 正文可能不以\r\n结尾
                 auto lefted = sfile.read_num(content_length);
-                if(lefted!="")
+                if (lefted != "")
                 {
                     tp = lefted;
                 }
@@ -427,6 +427,7 @@ std::string HttpServerUtil::judge_file_type(std::string_view path)
 }
 
 // HttpResponse实现
+HttpResponse HttpResponse::defult404 = HttpResponse{404};
 HttpResponse::HttpResponse(size_t status, std::string httptype, std::string servername)
     : http_version_(std::move(httptype)), status_code_(status)
 {
@@ -436,6 +437,28 @@ HttpResponse::HttpResponse(size_t status, std::string httptype, std::string serv
     }
     headers_["Server"] = std::move(servername);
     headers_["Connection"] = "keep-alive";
+}
+
+HttpResponse HttpResponse::text(std::string content, size_t status, std::string contenttype,
+                                std::string httptype)
+{
+    return HttpResponse{status, httptype}.with_content(content, contenttype);
+}
+
+HttpResponse HttpResponse::binary(std::string content, size_t status, std::string contenttype,
+                                  std::string httptype)
+{
+    return HttpResponse{status, httptype}.with_content(content, contenttype);
+}
+
+HttpResponse HttpResponse::fromFileCache(const LocalFile& file)
+{
+    if (file)
+    {
+        return HttpResponse{200}.with_content(std::string{file.read()},
+                                              HttpServerUtil::judge_file_type(file.getPath()));
+    }
+    return defult404;
 }
 
 HttpResponse& HttpResponse::addHeader(std::string key, std::string val)
@@ -543,29 +566,15 @@ HttpResponse HttpResponse::formLocalFile(std::string path, std::string type)
     LocalFile& file = fileCache.get(platform::fixPath(path)); // Fix path for local system
     std::string_view file_content_view = file.read();         // Renamed to avoid conflict
 
-    if (!file_content_view.empty())
+    if (file)
     {
-        // 文件存在且有内容
         HttpResponse response(200);
         response.with_content(std::string(file_content_view), type);
         return response;
     }
     else
     {
-        // 文件不存在或为空
-        HttpResponse response(404);
-        // Try to load a custom 404.html page
-        LocalFile& not_found_page = fileCache.get(platform::fixPath("404.html"));
-        std::string_view not_found_content = not_found_page.read();
-        if (!not_found_content.empty())
-        {
-            response.with_content(std::string(not_found_content), "text/html;charset=utf-8");
-        }
-        else
-        {
-            response.with_content("File not found: " + path, "text/plain;charset=utf-8");
-        }
-        return response;
+        return defult404;
     }
 }
 
