@@ -21,7 +21,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # 查找必要的包
 find_package(Threads REQUIRED)
-find_package(yalantinglibs REQUIRED)
+# find_package(yalantinglibs REQUIRED)
 
 # 平台特定设置
 if(WIN32)
@@ -92,7 +92,7 @@ target_link_libraries(webserver_lib PUBLIC
     OpenSSL::Crypto
     ${MYSQL_LIBRARIES}
     Threads::Threads
-    yalantinglibs::yalantinglibs  # 使用统一的yalantinglibs目标
+    # yalantinglibs::yalantinglibs  # 使用统一的yalantinglibs目标
 )
 
 # 添加demo源文件
