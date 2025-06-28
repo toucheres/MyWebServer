@@ -1,6 +1,6 @@
 #pragma once
 // #include "reflection.hpp"
-#include "reflection_ylt.hpp"
+#include "reflection.h"
 #include <charconv>
 #include <stdexcept>
 #include <string>
@@ -70,7 +70,7 @@ class json
 
                                   if constexpr (requires { (std::string) arg; })
                                   {
-                                      content = "\"" + (std::string)arg + "\"";
+                                      content = "\"" + escape_string((std::string)arg) + "\"";
                                   }
                                   else if constexpr (std::is_integral_v<ArgType> ||
                                                      std::is_floating_point_v<ArgType>)
@@ -79,7 +79,7 @@ class json
                                   }
                                   else if constexpr (requires { std::to_string(arg); })
                                   {
-                                      content = "\"" + std::to_string(arg) + "\"";
+                                      content = "\"" + escape_string(std::to_string(arg)) + "\"";
                                   }
                                   else if constexpr (MeaningfulAggregate<ArgType>)
                                   {
@@ -136,13 +136,49 @@ class json
         content += "}";
     }
 
-    // 重命名为add_string，更明确表示添加字符串值
+    // 添加字符串转义函数
+    static std::string escape_string(std::string_view str) {
+        std::string result;
+        result.reserve(str.size() * 2); // 预留空间，避免频繁重分配
+        
+        for (char c : str) {
+            switch (c) {
+                case '"':
+                    result += "\\\"";
+                    break;
+                case '\\':
+                    result += "\\\\";
+                    break;
+                case '\b':
+                    result += "\\b";
+                    break;
+                case '\f':
+                    result += "\\f";
+                    break;
+                case '\n':
+                    result += "\\n";
+                    break;
+                case '\r':
+                    result += "\\r";
+                    break;
+                case '\t':
+                    result += "\\t";
+                    break;
+                default:
+                    result += c;
+                    break;
+            }
+        }
+        return result;
+    }
+
+    // 修改add_string方法使用转义函数
     void add_string(std::string_view key, std::string_view value)
     {
-        content += std::string_view("\"");
+        content += "\"";
         content += key;
         content += "\":\"";
-        content += value;
+        content += escape_string(value);
         content += "\"";
     }
 

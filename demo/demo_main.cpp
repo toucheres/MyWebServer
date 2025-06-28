@@ -25,7 +25,7 @@ int main()
         [](serverFile& connection)
         {
             auto ret = Format{"/login/%[^/]/%s", Format::Type::scanf}.parse(
-                connection.getContent()[HttpServerUtil::ContentKey::path]);
+                connection.getContent()[HttpResponse::RequestKey::path]);
             if (ret)
             {
                 auto context = *ret;
@@ -34,15 +34,15 @@ int main()
                 auto logined = login(username, password);
                 if (logined.size())
                 {
-                    std::string cookie_value{reinterpret_cast<char*>(logined.data()),
-                                             logined.size()};
+                    std::string cookie_value{logined};
                     auto httpres =
                         HttpResponse{200}
                             .with_content("Login successful")
-                            .addHeader("Set-Cookie",
+                            .addHeader(HttpResponse::ResponseKey::Set_Cookie,
                                        "session=" + cookie_value + "; Path=/; HttpOnly")
-                            .addHeader("Access-Control-Allow-Credentials", "true")
-                            .addHeader("Access-Control-Allow-Origin",
+                            .addHeader(HttpResponse::ResponseKey::Access_Control_Allow_Credentials,
+                                       "true")
+                            .addHeader(HttpResponse::ResponseKey::Access_Control_Allow_Origin,
                                        std::format("http://localhost:{}", server.getPort()));
 
                     connection << httpres;
@@ -62,7 +62,8 @@ int main()
         [](serverFile& file)
         {
             // std::cout << "ok" << '\n';
-            auto cookie = file.getContent()["cookie"];
+            // auto cookie = file.getContent()["cookie"];
+            auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
             // std::cout << "Received cookie: " << cookie << std::endl;
 
             // 从cookie字符串中提取session值
@@ -122,8 +123,7 @@ int main()
                              [](serverFile& file)
                              {
                                  // std::cout << "ok" << '\n';
-                                 auto cookie =
-                                     file.getContent()[HttpServerUtil::ContentKey::cookie];
+                                 auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
                                  // std::cout << "Received cookie in /do: " << cookie << std::endl;
 
                                  // 从cookie字符串中提取session值
@@ -156,11 +156,12 @@ int main()
                              [](serverFile& file)
                              {
                                  // std::cout << "ok" << '\n';
-                                 auto cookie = file.getContent()["cookie"];
-                                 // std::cout << "Received cookie: " << cookie << std::endl;
+                                 auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
+                                 std::cout << "Received cookie: " << cookie << std::endl;
 
                                  // 从cookie字符串中提取session值
                                  std::string session_cookie;
+                                 // std::cout << "cookie before: " << cookie << '\n';
                                  size_t session_pos = cookie.find("session=");
                                  if (session_pos != std::string::npos)
                                  {
@@ -179,70 +180,79 @@ int main()
                                  auto ret = check(session_cookie);
                                  if (!ret)
                                  {
+                                     std::cout << "cookie验证失败\n";
+                                     std::cout << session_cookie << '\n';
                                      file << HttpResponse{403};
                                  }
                                  else
                                  {
+                                     //  std::cout << "cookie验证成功\n";
+                                     //  std::cout << session_cookie << '\n';
                                      auto ret = getmessage();
-                                     std::string res;
-                                     res.reserve(2048);
+                                     std::string res = "[";
+                                     bool first = true;
                                      for (auto& each : ret)
                                      {
+                                         if (!first) {
+                                             res += ",";
+                                         }
                                          res += json::from(each.to_struct());
-                                         res += '\n';
+                                         first = false;
                                      }
-                                     // file << HttpServerUtil::makeHttp(200, res);
+                                     res += "]";
                                      file << HttpResponse::text(res);
                                  }
                              });
 
-    server.addCallbackFormat(
-        Format{"/api%s", Format::Type::scanf},
-        [](serverFile& file)
-        {
-            auto cookie = file.getContent()[HttpServerUtil::ContentKey::cookie];
-            // std::cout << "Received cookie in /do: " << cookie << std::endl;
+    server.addCallbackFormat(Format{"/api%s", Format::Type::scanf},
+                             [](serverFile& file)
+                             {
+                                 auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
+                                 // std::cout << "Received cookie in /do: " << cookie << std::endl;
 
-            // 从cookie字符串中提取session值
-            std::string session_cookie;
-            size_t session_pos = cookie.find("session=");
-            if (session_pos != std::string::npos)
-            {
-                size_t start = session_pos + 8; // "session="的长度
-                size_t end = cookie.find(";", start);
-                if (end == std::string::npos)
-                {
-                    end = cookie.length();
-                }
-                session_cookie = cookie.substr(start, end - start);
-            }
-            // auto cookie_ = file.getContent()[HttpServerUtil::ContentKey::cookie];
-            auto ret = check(session_cookie);
-            if (!ret)
-            {
-                // file.write(HttpServerUtil::makeHttp(403, ""));
-                file << HttpResponse{403};
-            }
-            else
-            {
-                auto path_parse_result = Format{"/api%s", Format::Type::scanf}.parse(
-                    file.getContent()[HttpServerUtil::ContentKey::path]);
-                if (path_parse_result)
-                {
-                    auto api_path = std::get<std::string>((*path_parse_result)[0]);
-                    server.callback_callback(api_path, file);
-                }
-                else
-                {
-                    file.write(HttpResponse{400});
-                }
-            }
-        });
+                                 // 从cookie字符串中提取session值
+                                 std::string session_cookie;
+                                 size_t session_pos = cookie.find("session=");
+                                 if (session_pos != std::string::npos)
+                                 {
+                                     size_t start = session_pos + 8; // "session="的长度
+                                     size_t end = cookie.find(";", start);
+                                     if (end == std::string::npos)
+                                     {
+                                         end = cookie.length();
+                                     }
+                                     session_cookie = cookie.substr(start, end - start);
+                                 }
+                                 // auto cookie_ =
+                                 // file.getContent()[HttpResponse::ContentKey::cookie];
+                                 auto ret = check(session_cookie);
+                                 if (!ret)
+                                 {
+                                     // file.write(HttpServerUtil::makeHttp(403, ""));
+                                     file << HttpResponse{403};
+                                 }
+                                 else
+                                 {
+                                     auto path_parse_result =
+                                         Format{"/api%s", Format::Type::scanf}.parse(
+                                             file.getContent()[HttpResponse::RequestKey::path]);
+                                     if (path_parse_result)
+                                     {
+                                         auto api_path =
+                                             std::get<std::string>((*path_parse_result)[0]);
+                                         server.callback_callback(api_path, file);
+                                     }
+                                     else
+                                     {
+                                         file.write(HttpResponse{400});
+                                     }
+                                 }
+                             });
     server.addCallbackFormat(
         Format{"/register", Format::Type::same},
         [](serverFile& file)
         {
-            auto content = file.getContent()[HttpServerUtil::ContentKey::postcontent];
+            auto content = file.getContent()[HttpResponse::RequestKey::postcontent];
             auto ret =
                 Format{"name = '%[^']', password = '%[^']'", Format::Type::scanf}.parse(content);
             if (!ret)
@@ -272,7 +282,7 @@ int main()
         Format{"/deregistration", Format::Type::same},
         [](serverFile& file)
         {
-            auto content = file.getContent()[HttpServerUtil::ContentKey::postcontent];
+            auto content = file.getContent()[HttpResponse::RequestKey::postcontent];
             auto ret =
                 Format{"name = '%[^']', password = '%[^']'", Format::Type::scanf}.parse(content);
             if (!ret)
@@ -284,7 +294,6 @@ int main()
                 if (deregistration(std::get<std::string>((*ret)[0]),
                                    std::get<std::string>((*ret)[1])))
                 {
-                    // file << HttpServerUtil::makeHttp(200, "ok");
                     file << HttpResponse::text("ok");
                 }
                 else

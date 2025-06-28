@@ -1,6 +1,5 @@
 #pragma once
 #include "file.h"               // 确保包含LocalFiles的定义
-#include "protocol_constants.h" // 新增包含
 #include "serverFile.h"
 #include <string>
 #include <string_view>
@@ -27,6 +26,7 @@ struct HttpResponse
     static HttpResponse formLocalFile(std::string path, std::string type);
     static HttpResponse formLocalFile(std::string path); // auto select type
     HttpResponse& addHeader(std::string key, std::string val);
+    // HttpResponse& addHeader(const std::string_view key, std::string val);
     HttpResponse& with_content(std::string content, std::string type = "text/plain;charset=utf-8");
     HttpResponse(size_t status, std::string httptype = "HTTP/1.1",
                  std::string servername = default_servername);
@@ -41,6 +41,24 @@ struct HttpResponse
     inline static std::map<size_t, std::string> status_num_string = {{200, "OK"},
                                                                      {404, "Not Found"}};
     operator std::string();
+    class RequestKey
+    {
+      public:
+        static constexpr const char* method = "method";
+        static constexpr const char* path = "path";
+        static constexpr const char* version = "version";
+        static constexpr const char* content_length = "content-length";
+        static constexpr const char* postcontent = "postcontent";
+        static constexpr const char* cookie = "cookie";
+    };
+    class ResponseKey
+    {
+      public:
+        static constexpr const char* Set_Cookie = "Set-Cookie";
+        static constexpr const char* Access_Control_Allow_Origin = "Access-Control-Allow-Origin";
+        static constexpr const char* Access_Control_Allow_Credentials =
+            "Access-Control-Allow-Credentials";
+    };
 };
 
 class HttpServerUtil
@@ -60,16 +78,7 @@ class HttpServerUtil
         CHUNKED_TRAILER, // 解析分块尾部
         COMPLETE
     };
-    class ContentKey
-    {
-      public:
-        static constexpr std::string method = "method";
-        static constexpr std::string path = "path";
-        static constexpr std::string version = "version";
-        static constexpr std::string content_length = "content-length";
-        static constexpr std::string postcontent = "postcontent";
-        static constexpr std::string cookie = "cookie";
-    };
+
     // HTTP事件循环
     static Task<void, void> httpEventloop(serverFile* self);
 

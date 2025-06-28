@@ -106,8 +106,10 @@ async function loadInitialMessages() {
         });
         if (response.ok) {
             const text = await response.text();
-            const messages = text.trim().split('\n').filter(line => line.trim());
-            displayMessages(messages);
+            // console.log('服务器返回的原始数据:', text);
+            
+            // 直接传递完整的JSON字符串，而不是分割它
+            displayMessages(text);
         } else if (response.status === 403) {
             logout();
             showError('登录已过期，请重新登录');
@@ -169,18 +171,35 @@ function connectWebSocket() {
 }
 
 // 显示消息
-function displayMessages(messages) {
+// function displayMessages(messages) {
+//     const messagesContainer = document.getElementById('messages');
+//     messagesContainer.innerHTML = '';
+
+//     messages.forEach(messageJson => {
+//         try {
+//             const message = JSON.parse(messageJson);
+//             addMessage(message);
+//         } catch (error) {
+//             console.error('解析消息失败:', error);
+//         }
+//     });
+// }
+function displayMessages(messagesText) {
     const messagesContainer = document.getElementById('messages');
     messagesContainer.innerHTML = '';
 
-    messages.forEach(messageJson => {
-        try {
-            const message = JSON.parse(messageJson);
+    try {
+        // 直接解析JSON数组
+        const messages = JSON.parse(messagesText);
+
+        // 遍历消息数组
+        messages.forEach(message => {
             addMessage(message);
-        } catch (error) {
-            console.error('解析消息失败:', error);
-        }
-    });
+        });
+    } catch (error) {
+        console.error('解析消息失败:', error);
+        console.log('原始数据:', messagesText);
+    }
 }
 
 // 添加单条消息

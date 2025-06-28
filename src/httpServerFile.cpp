@@ -3,7 +3,6 @@
 #include "serverFile.h"
 #include <algorithm>
 #include <filesystem>
-#include <iomanip>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -157,9 +156,13 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                     version =
                         std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
 
-                    self->getContent()["method"] = method;
-                    self->getContent()["path"] = path;
-                    self->getContent()["version"] = version;
+                    // self->getContent()["method"] = method;
+                    // self->getContent()["path"] = path;
+                    // self->getContent()["version"] = version;
+
+                    self->getContent()[HttpResponse::RequestKey::method] = method;
+                    self->getContent()[HttpResponse::RequestKey::path] = path;
+                    self->getContent()[HttpResponse::RequestKey::version] = version;
 
                     state = ParseState::HEADERS;
                 }
@@ -189,7 +192,8 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                     }
                     else
                     {
-                        auto it = self->getContent().find("content-length");
+                        auto it = self->getContent().find(HttpResponse::RequestKey::content_length);
+                        // auto it = self->getContent().find("content-length");
                         if (it != self->getContent().end())
                         {
                             try
@@ -257,7 +261,9 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
 
                 if (body_read >= content_length)
                 {
-                    self->getContent().try_emplace("postcontent", body_buffer);
+                    // self->getContent().try_emplace("postcontent", body_buffer);
+                    self->getContent().try_emplace(HttpResponse::RequestKey::postcontent,
+                                                   body_buffer);
                     state = ParseState::COMPLETE;
                 }
             }
@@ -325,7 +331,8 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             if (tp == "\r\n")
             {
                 // 分块传输结束
-                self->getContent().try_emplace("postcontent", chunked_body);
+                // self->getContent().try_emplace("postcontent", chunked_body);
+                self->getContent().try_emplace(HttpResponse::RequestKey::postcontent, chunked_body);
                 self->getContent()["chunked_complete"] = "true";
                 state = ParseState::COMPLETE;
             }
@@ -466,6 +473,11 @@ HttpResponse& HttpResponse::addHeader(std::string key, std::string val)
     headers_[std::move(key)] = std::move(val);
     return *this;
 }
+// HttpResponse& HttpResponse::addHeader(const std::string_view key, std::string val)
+// {
+//     headers_[std::string{key}] = std::move(val);
+//     return *this;
+// }
 
 HttpResponse& HttpResponse::with_content(std::string new_content, std::string type)
 {
