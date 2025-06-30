@@ -2,7 +2,7 @@
 #include "protocol_constants.h" // 新增包含
 
 // serverFile constructor
-serverFile::serverFile(int fd) : socketfile_(fd), protocolType_(Protocol::HTTP), fileState_(true) {} // 更新默认协议类型
+serverFile::serverFile(int fd) : protocolType_(Protocol::HTTP), socketfile_(fd), fileState_(true) {} // 更新默认协议类型
 
 // 使用Meyer's Singleton模式实现懒加载
 std::unordered_map<Protocol, serverFile::ProtocolHandler>& 
