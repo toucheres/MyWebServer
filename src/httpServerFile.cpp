@@ -234,7 +234,39 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                         val = std::string(tp.substr(index + 2, val_len));
                     }
 
-                    self->getContent().try_emplace(key, val);
+                    // 特殊处理cookie头部 - 可能包含多个值
+                    if (key == "cookie")
+                    {
+                        // 如果已存在cookie，追加新值
+                        auto it = self->getContent().find(key);
+                        if (it != self->getContent().end() && !it->second.empty())
+                        {
+                            it->second += "; " + val;
+                        }
+                        else
+                        {
+                            self->getContent()[key] = val;
+                        }
+                    }
+                    // 处理可能多次出现的其他头部
+                    else if (key == "set-cookie" || key == "accept" || key == "accept-encoding" ||
+                             key == "accept-language")
+                    {
+                        auto it = self->getContent().find(key);
+                        if (it != self->getContent().end() && !it->second.empty())
+                        {
+                            it->second += ", " + val;
+                        }
+                        else
+                        {
+                            self->getContent()[key] = val;
+                        }
+                    }
+                    // 其他头部直接覆盖
+                    else
+                    {
+                        self->getContent()[key] = val;
+                    }
                 }
             }
             break;
@@ -259,11 +291,11 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 body_buffer.append(tp.data(), tp.length());
                 body_read += tp.length();
 
+                // TODO 读超了退回
                 if (body_read >= content_length)
                 {
                     // self->getContent().try_emplace("postcontent", body_buffer);
-                    self->getContent().try_emplace(HttpResponse::RequestKey::postcontent,
-                                                   body_buffer);
+                    self->getContent()[HttpResponse::RequestKey::postcontent] = body_buffer;
                     state = ParseState::COMPLETE;
                 }
             }
@@ -332,7 +364,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             {
                 // 分块传输结束
                 // self->getContent().try_emplace("postcontent", chunked_body);
-                self->getContent().try_emplace(HttpResponse::RequestKey::postcontent, chunked_body);
+                self->getContent()[HttpResponse::RequestKey::postcontent] = chunked_body;
                 self->getContent()["chunked_complete"] = "true";
                 state = ParseState::COMPLETE;
             }
@@ -352,7 +384,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                         size_t val_len = tp.length() - (index + 2) - 2;
                         val = std::string(tp.substr(index + 2, val_len));
                     }
-                    self->getContent().try_emplace(key, val);
+                    self->getContent()[key] = val;
                 }
             }
             break;

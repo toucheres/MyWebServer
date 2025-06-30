@@ -39,12 +39,13 @@ int main()
                         HttpResponse{200}
                             .with_content("Login successful")
                             .addHeader(HttpResponse::ResponseKey::Set_Cookie,
-                                       "session=" + cookie_value + "; Path=/; HttpOnly")
+                                       "session=" + cookie_value +
+                                           "; Path=/; HttpOnly; SameSite=Lax")
                             .addHeader(HttpResponse::ResponseKey::Access_Control_Allow_Credentials,
                                        "true")
                             .addHeader(HttpResponse::ResponseKey::Access_Control_Allow_Origin,
-                                       std::format("http://localhost:{}", server.getPort()));
-
+                                       std::format("http://127.0.0.1:{}", server.getPort()));
+                    // std::cout << "login reply: " << (std::string)httpres << '\n';
                     connection << httpres;
                 }
                 else
@@ -152,12 +153,13 @@ int main()
                                                      ret->username.content, ret->password.content));
                                  }
                              });
+
     server.addCallbackFormat(Format{"/getmessages", Format::Type::same},
                              [](serverFile& file)
                              {
                                  // std::cout << "ok" << '\n';
                                  auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
-                                 std::cout << "Received cookie: " << cookie << std::endl;
+                                 // std::cout << "Received cookie: " << cookie << std::endl;
 
                                  // 从cookie字符串中提取session值
                                  std::string session_cookie;
@@ -180,8 +182,16 @@ int main()
                                  auto ret = check(session_cookie);
                                  if (!ret)
                                  {
-                                     std::cout << "cookie验证失败\n";
-                                     std::cout << session_cookie << '\n';
+                                    //  std::cout << "cookie验证失败\n";
+                                    //  std::cout << "origin imf: \n"
+                                    //            << file.getSocketFile().read_all() << '\n';
+                                    //  std::cout << "parsed imf:\n";
+                                    //  for (auto& each : file.getContent())
+                                    //  {
+                                    //      std::cout << each.first << ": " << each.second << '\n';
+                                    //  }
+                                    //  std::cout << '\n';
+                                     // std::cout << session_cookie << '\n';
                                      file << HttpResponse{403};
                                  }
                                  else
@@ -193,7 +203,8 @@ int main()
                                      bool first = true;
                                      for (auto& each : ret)
                                      {
-                                         if (!first) {
+                                         if (!first)
+                                         {
                                              res += ",";
                                          }
                                          res += json::from(each.to_struct());
