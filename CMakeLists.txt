@@ -18,7 +18,9 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
+set(YLT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(YLT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YLT_ENABLE_SSL OFF CACHE BOOL "" FORCE)  # 避免SSL相关别名目标
 # 添加 YLT 库 - 使用 add_subdirectory 方式
 add_subdirectory(3rd/yalantinglibs)
 
