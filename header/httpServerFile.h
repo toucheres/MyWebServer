@@ -103,6 +103,18 @@ class HttpServerUtil
     static std::string addChunkToRequest(const std::string& chunk_data);
     static std::string endChunkedRequest();
 
+    // 新增：网络套接字相关静态方法
+    static int makeSocket();
+    static int bindSocket(int server_fd, uint16_t port, const std::string& ip = "0.0.0.0");
+    static bool listenSocket(int server_fd, size_t listenLength = 5);
+    static int acceptSocket(int server_fd, struct sockaddr* client_addr, socklen_t* client_addr_len);
+    static bool setReuseAddr(int fd);
+
+    // 新增：客户端连接相关方法
+    static int createClientSocket();
+    static int connectToServer(const std::string& host, uint16_t port);
+    static int connectToServer(const std::string& host, uint16_t port, int timeout_ms);
+
     // 禁止实例化
     HttpServerUtil() = delete;
     ~HttpServerUtil() = delete;

@@ -1,5 +1,6 @@
 #include "corutine.hpp"
 #include "format.h"
+#include "forworder.h"
 #include "getmessage.hpp"
 #include "http.h"
 #include "httpServerFile.h"
@@ -8,21 +9,22 @@
 #include "message.h"
 #include "serverFile.h"
 #include "stdiomanager.hpp"
+#include "threadpool.hpp"
 #include "users.h"
 #include "webSocketFile.h"
 #include <cstdlib>
 #include <string>
-HttpServer server;
-LocalFiles LocalFileCache;
-int main()
+int each_process(uint16_t port)
 {
+    LocalFiles LocalFileCache;
+    HttpServer server{port};
     // std::cout << std::format("http://localhost:{}", server.getPort()) << '\n';
     json::defultOpt.flatten_single_member = true;
-    stdiolistener iol;
+
     server.autoLoginFile(LocalFileCache);
     server.addCallbackFormat(
         Format{"/login/%[^/]/%s", Format::Type::scanf},
-        [](serverFile& connection)
+        [&server](serverFile& connection)
         {
             auto ret = Format{"/login/%[^/]/%s", Format::Type::scanf}.parse(
                 connection.getContent()[HttpResponse::RequestKey::path]);
@@ -60,7 +62,7 @@ int main()
         });
     server.addCallbackFormat(
         Format{"/ws", Format::Type::same},
-        [](serverFile& file)
+        [&server](serverFile& file)
         {
             // std::cout << "ok" << '\n';
             // auto cookie = file.getContent()["cookie"];
@@ -182,15 +184,15 @@ int main()
                                  auto ret = check(session_cookie);
                                  if (!ret)
                                  {
-                                    //  std::cout << "cookie验证失败\n";
-                                    //  std::cout << "origin imf: \n"
-                                    //            << file.getSocketFile().read_all() << '\n';
-                                    //  std::cout << "parsed imf:\n";
-                                    //  for (auto& each : file.getContent())
-                                    //  {
-                                    //      std::cout << each.first << ": " << each.second << '\n';
-                                    //  }
-                                    //  std::cout << '\n';
+                                     //  std::cout << "cookie验证失败\n";
+                                     //  std::cout << "origin imf: \n"
+                                     //            << file.getSocketFile().read_all() << '\n';
+                                     //  std::cout << "parsed imf:\n";
+                                     //  for (auto& each : file.getContent())
+                                     //  {
+                                     //      std::cout << each.first << ": " << each.second << '\n';
+                                     //  }
+                                     //  std::cout << '\n';
                                      // std::cout << session_cookie << '\n';
                                      file << HttpResponse{403};
                                  }
@@ -216,7 +218,7 @@ int main()
                              });
 
     server.addCallbackFormat(Format{"/api%s", Format::Type::scanf},
-                             [](serverFile& file)
+                             [&server](serverFile& file)
                              {
                                  auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
                                  // std::cout << "Received cookie in /do: " << cookie << std::endl;
@@ -313,9 +315,44 @@ int main()
                 }
             }
         });
-    auto& coru = Co_Start_Manager::getInstance();
-    coru.add(iol);
+
+    auto coru = Co_Manager{};
+    // coru.add(iol);
     coru.add(server);
-    coru.start();
+    while (1)
+    {
+        coru.go();
+    }
+    return 0;
+}
+int main()
+{
+    threadpool tp{6};
+    tp.enqueue([]() { each_process(8080); });
+    tp.enqueue([]() { each_process(8081); });
+    tp.enqueue([]() { each_process(8082); });
+    tp.enqueue(
+        []()
+        {
+            // 创建端口转发器：8080 <-> 3000
+            portForwarder forwarder(static_cast<port>(3000), static_cast<port>(8080));
+
+            // 在事件循环中运行
+            while (true)
+            {
+                forwarder.eventGo();
+            }
+        });
+    tp.enqueue(
+        [&]()
+        {
+            stdiolistener iol;
+            auto co = Co_Manager{};
+            co.add(iol);
+            while (1)
+            {
+                co.go();
+            }
+        });
     return 0;
 }

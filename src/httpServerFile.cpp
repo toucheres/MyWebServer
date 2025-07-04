@@ -647,3 +647,294 @@ HttpResponse::operator std::string()
     oss << body_;
     return oss.str();
 }
+// ...existing code...
+
+// 新增：网络套接字相关方法实现
+int HttpServerUtil::makeSocket()
+{
+    // 初始化socket库 - 平台无关调用
+    if (!platform::initSocketLib())
+    {
+        std::cerr << "Failed to initialize socket library" << std::endl;
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+
+    socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == INVALID_SOCKET_VALUE)
+    {
+        platform::printError("Socket creation failed");
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+    return static_cast<int>(server_fd);
+}
+
+int HttpServerUtil::bindSocket(int server_fd, uint16_t port, const std::string& ip)
+{
+    // 绑定地址和端口
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+
+    // 处理IP地址
+    if (ip == "0.0.0.0" || ip.empty())
+    {
+        server_addr.sin_addr.s_addr = INADDR_ANY;
+    }
+    else
+    {
+        if (inet_pton(AF_INET, ip.c_str(), &server_addr.sin_addr) <= 0)
+        {
+            platform::printError("Invalid IP address");
+            platform::closeSocket(server_fd);
+            return static_cast<int>(INVALID_SOCKET_VALUE);
+        }
+    }
+
+    server_addr.sin_port = htons(port);
+
+    if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR_RETURN)
+    {
+        platform::printError("Bind failed");
+        platform::closeSocket(server_fd);
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+    return server_fd;
+}
+
+bool HttpServerUtil::listenSocket(int server_fd, size_t listenLength)
+{
+    // 监听连接
+    if (listen(server_fd, static_cast<int>(listenLength)) == SOCKET_ERROR_RETURN)
+    {
+        platform::printError("Listen failed");
+        platform::closeSocket(server_fd);
+        return false;
+    }
+    return true;
+}
+
+int HttpServerUtil::acceptSocket(int server_fd, struct sockaddr* client_addr,
+                                 socklen_t* client_addr_len)
+{
+    // 接受连接 - 使用平台无关函数
+    socket_t client_fd = accept(server_fd, client_addr, client_addr_len);
+    if (client_fd == INVALID_SOCKET_VALUE)
+    {
+        int lastError = platform::getLastError();
+        if (platform::isWouldBlock(lastError))
+        {
+            // 没有连接请求，非阻塞模式下会立即返回
+            return -2; // 特殊错误码表示无连接
+        }
+        else
+        {
+            platform::printError("Accept failed");
+            return static_cast<int>(INVALID_SOCKET_VALUE);
+        }
+    }
+    return static_cast<int>(client_fd);
+}
+
+bool HttpServerUtil::setReuseAddr(int fd)
+{
+    int opt = 1;
+    // 使用平台无关的socket选项设置函数
+    if (platform::setSocketOption(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+    {
+        platform::printError("设置SO_REUSEADDR失败");
+        return false;
+    }
+    return true;
+}
+
+// ...existing code...
+
+// 新增：客户端连接相关方法实现
+int HttpServerUtil::createClientSocket()
+{
+    // 确保socket库已初始化
+    if (!platform::initSocketLib())
+    {
+        std::cerr << "Failed to initialize socket library" << std::endl;
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+
+    socket_t client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_fd == INVALID_SOCKET_VALUE)
+    {
+        platform::printError("Client socket creation failed");
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+
+    return static_cast<int>(client_fd);
+}
+
+int HttpServerUtil::connectToServer(const std::string& host, uint16_t port)
+{
+    // 创建客户端套接字
+    int client_fd = createClientSocket();
+    if (client_fd == static_cast<int>(INVALID_SOCKET_VALUE))
+    {
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+
+    // 设置服务器地址结构
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+
+    // 解析主机地址
+    if (inet_pton(AF_INET, host.c_str(), &server_addr.sin_addr) <= 0)
+    {
+        // 如果不是有效的IP地址，尝试作为localhost处理
+        if (host == "localhost" || host == "127.0.0.1")
+        {
+            server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        }
+        else
+        {
+            platform::printError("Invalid host address: " + host);
+            platform::closeSocket(client_fd);
+            return static_cast<int>(INVALID_SOCKET_VALUE);
+        }
+    }
+
+    // 连接到服务器
+    if (connect(client_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) ==
+        SOCKET_ERROR_RETURN)
+    {
+        platform::printError("Connection to " + host + ":" + std::to_string(port) + " failed");
+        platform::closeSocket(client_fd);
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+
+    // std::cout << "Successfully connected to " << host << ":" << port << std::endl;
+    return client_fd;
+}
+
+int HttpServerUtil::connectToServer(const std::string& host, uint16_t port, int timeout_ms)
+{
+    // 创建客户端套接字
+    int client_fd = createClientSocket();
+    if (client_fd == static_cast<int>(INVALID_SOCKET_VALUE))
+    {
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+
+    // 设置为非阻塞模式以支持超时
+    if (!platform::setNonBlocking(client_fd))
+    {
+        platform::printError("Failed to set non-blocking mode");
+        platform::closeSocket(client_fd);
+        return static_cast<int>(INVALID_SOCKET_VALUE);
+    }
+
+    // 设置服务器地址结构
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+
+    // 解析主机地址
+    if (inet_pton(AF_INET, host.c_str(), &server_addr.sin_addr) <= 0)
+    {
+        if (host == "localhost" || host == "127.0.0.1")
+        {
+            server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        }
+        else
+        {
+            platform::printError("Invalid host address: " + host);
+            platform::closeSocket(client_fd);
+            return static_cast<int>(INVALID_SOCKET_VALUE);
+        }
+    }
+
+    // 尝试连接
+    int connect_result = connect(client_fd, (struct sockaddr*)&server_addr, sizeof(server_addr));
+
+    if (connect_result == 0)
+    {
+        // 立即连接成功
+        // std::cout << "Successfully connected to " << host << ":" << port << std::endl;
+        return client_fd;
+    }
+    else if (connect_result == SOCKET_ERROR_RETURN)
+    {
+        int error = platform::getLastError();
+
+        // 检查是否是非阻塞连接进行中的情况
+#ifdef PLATFORM_WINDOWS
+        if (error != WSAEWOULDBLOCK && error != WSAEINPROGRESS)
+#else
+        if (error != EINPROGRESS && error != EWOULDBLOCK)
+#endif
+        {
+            platform::printError("Connection failed");
+            platform::closeSocket(client_fd);
+            return static_cast<int>(INVALID_SOCKET_VALUE);
+        }
+
+        // 使用select等待连接完成
+        fd_set write_fds, error_fds;
+        FD_ZERO(&write_fds);
+        FD_ZERO(&error_fds);
+        FD_SET(client_fd, &write_fds);
+        FD_SET(client_fd, &error_fds);
+
+        struct timeval timeout;
+        timeout.tv_sec = timeout_ms / 1000;
+        timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+        int select_result = select(client_fd + 1, nullptr, &write_fds, &error_fds, &timeout);
+
+        if (select_result > 0)
+        {
+            if (FD_ISSET(client_fd, &error_fds))
+            {
+                // 连接出错
+                platform::printError("Connection failed during select");
+                platform::closeSocket(client_fd);
+                return static_cast<int>(INVALID_SOCKET_VALUE);
+            }
+            else if (FD_ISSET(client_fd, &write_fds))
+            {
+                // 检查连接是否真的成功
+                int so_error;
+                socklen_t len = sizeof(so_error);
+                if (getsockopt(client_fd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len) == 0 &&
+                    so_error == 0)
+                {
+                    // std::cout << "Successfully connected to " << host << ":" << port
+                    //           << " (with timeout)" << std::endl;
+                    return client_fd;
+                }
+                else
+                {
+                    platform::printError("Connection failed (SO_ERROR check)");
+                    platform::closeSocket(client_fd);
+                    return static_cast<int>(INVALID_SOCKET_VALUE);
+                }
+            }
+        }
+        else if (select_result == 0)
+        {
+            // 超时
+            std::cerr << "Connection timeout to " << host << ":" << port << std::endl;
+            platform::closeSocket(client_fd);
+            return static_cast<int>(INVALID_SOCKET_VALUE);
+        }
+        else
+        {
+            // select错误
+            platform::printError("Select failed during connection");
+            platform::closeSocket(client_fd);
+            return static_cast<int>(INVALID_SOCKET_VALUE);
+        }
+    }
+
+    platform::closeSocket(client_fd);
+    return static_cast<int>(INVALID_SOCKET_VALUE);
+}
+
+// ...existing code...

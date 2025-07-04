@@ -143,7 +143,7 @@ int HttpServer::AcceptSocket(int server_fd, struct sockaddr* client_addr,
 }
 
 // 修改构造函数，确保初始化顺序与声明顺序一致
-HttpServer::HttpServer(std::string ip_listening, uint16_t port)
+HttpServer::HttpServer(uint16_t port, std::string ip_listening)
     : server_fd(-1), port(port), ip_listening(std::move(ip_listening)), running(false),
       server_task_handle(start()) // Initialize renamed handle
 {
@@ -256,7 +256,7 @@ uint16_t HttpServer::getPort() const
     return port;
 }
 
-void HttpServer::callback_callback(std::string format,serverFile& file)
+void HttpServer::callback_callback(std::string format, serverFile& file)
 {
     for (auto call = callbacks_format.begin(); call != callbacks_format.end(); call++)
     {
