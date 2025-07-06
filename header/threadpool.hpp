@@ -53,13 +53,13 @@ class threadpool
 
                             // 检查退出条件
                             if (stoken.stop_requested() || force_stop) {
-                                printf("Thread force stopped!\n");
+                                // printf("Thread force stopped!\n");
                                 break;
                             }
                             
                             // 优雅停止：处理完剩余任务后退出
                             if (!accept_new_tasks && tasks.empty()) {
-                                printf("Thread gracefully stopped!\n");
+                                // printf("Thread gracefully stopped!\n");
                                 break;
                             }
 
@@ -79,7 +79,7 @@ class threadpool
                                 
                                 // 如果在暂停期间收到停止信号，退出
                                 if (stoken.stop_requested() || force_stop) {
-                                    printf("Thread stopped during pause!\n");
+                                    // printf("Thread stopped during pause!\n");
                                     break;
                                 }
                             }

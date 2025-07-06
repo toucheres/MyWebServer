@@ -260,7 +260,7 @@ portForwarder::portForwarder(port listen_port, port target_port,
                                  std::to_string(static_cast<long long>(listen_port)));
     }
 
-    std::cout << "Port forwarder listening on " << listen_host << ":" 
-              << static_cast<long long>(listen_port) << " -> " << target_host << ":" 
-              << static_cast<long long>(target_port) << std::endl;
+    // std::cout << "Port forwarder listening on " << listen_host << ":" 
+    //           << static_cast<long long>(listen_port) << " -> " << target_host << ":" 
+    //           << static_cast<long long>(target_port) << std::endl;
 }
