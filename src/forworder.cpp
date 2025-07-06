@@ -2,49 +2,49 @@
 #include "httpServerFile.h"
 #include <algorithm>
 
-portForwarder::portForwarder(port a_from, port a_to, const std::string& target_host)
-    : target_port(a_to), target_host(target_host)
-{
-    // 创建并配置服务器套接字
-    server_fd = HttpServerUtil::makeSocket();
-    if (server_fd == -1)
-    {
-        throw std::runtime_error("Failed to create server socket");
-    }
+// portForwarder::portForwarder(port a_from, port a_to, const std::string& target_host)
+//     : target_port(a_to), target_host(target_host)
+// {
+//     // 创建并配置服务器套接字
+//     server_fd = HttpServerUtil::makeSocket();
+//     if (server_fd == -1)
+//     {
+//         throw std::runtime_error("Failed to create server socket");
+//     }
 
-    // 设置端口复用
-    if (!HttpServerUtil::setReuseAddr(server_fd))
-    {
-        platform::closeSocket(server_fd);
-        throw std::runtime_error("Failed to set SO_REUSEADDR");
-    }
+//     // 设置端口复用
+//     if (!HttpServerUtil::setReuseAddr(server_fd))
+//     {
+//         platform::closeSocket(server_fd);
+//         throw std::runtime_error("Failed to set SO_REUSEADDR");
+//     }
 
-    // 设置为非阻塞模式
-    if (!platform::setNonBlocking(server_fd))
-    {
-        platform::closeSocket(server_fd);
-        throw std::runtime_error("Failed to set non-blocking mode");
-    }
+//     // 设置为非阻塞模式
+//     if (!platform::setNonBlocking(server_fd))
+//     {
+//         platform::closeSocket(server_fd);
+//         throw std::runtime_error("Failed to set non-blocking mode");
+//     }
 
-    // 绑定到源端口
-    if (HttpServerUtil::bindSocket(server_fd, static_cast<long long>(a_from), "0.0.0.0") == -1)
-    {
-        platform::closeSocket(server_fd);
-        throw std::runtime_error("Failed to bind to port " +
-                                 std::to_string(static_cast<long long>(a_from)));
-    }
+//     // 绑定到源端口
+//     if (HttpServerUtil::bindSocket(server_fd, static_cast<long long>(a_from), "0.0.0.0") == -1)
+//     {
+//         platform::closeSocket(server_fd);
+//         throw std::runtime_error("Failed to bind to port " +
+//                                  std::to_string(static_cast<long long>(a_from)));
+//     }
 
-    // 开始监听
-    if (!HttpServerUtil::listenSocket(server_fd, 10))
-    {
-        platform::closeSocket(server_fd);
-        throw std::runtime_error("Failed to listen on port " +
-                                 std::to_string(static_cast<long long>(a_from)));
-    }
+//     // 开始监听
+//     if (!HttpServerUtil::listenSocket(server_fd, 10))
+//     {
+//         platform::closeSocket(server_fd);
+//         throw std::runtime_error("Failed to listen on port " +
+//                                  std::to_string(static_cast<long long>(a_from)));
+//     }
 
-    // std::cout << "Port forwarder listening on port " << static_cast<long long>(a_from) << " -> "
-    //       << target_host << ":" << static_cast<long long>(a_to) << std::endl;
-}
+//     // std::cout << "Port forwarder listening on port " << static_cast<long long>(a_from) << " -> "
+//     //       << target_host << ":" << static_cast<long long>(a_to) << std::endl;
+// }
 
 portForwarder::~portForwarder()
 {
@@ -215,4 +215,52 @@ portForwarder::portForwarder(fileDiscribe from, fileDiscribe to)
 
     server_fd = -1; // 不需要监听套接字
     // std::cout << "Direct file descriptor forwarding initialized" << std::endl;
+}
+
+// 新增构造函数：支持监听主机和目标主机
+portForwarder::portForwarder(port listen_port, port target_port, 
+                            const std::string& target_host,
+                            const std::string& listen_host)
+    : target_port(target_port), target_host(target_host)
+{
+    // 创建并配置服务器套接字
+    server_fd = HttpServerUtil::makeSocket();
+    if (server_fd == -1)
+    {
+        throw std::runtime_error("Failed to create server socket");
+    }
+
+    // 设置端口复用
+    if (!HttpServerUtil::setReuseAddr(server_fd))
+    {
+        platform::closeSocket(server_fd);
+        throw std::runtime_error("Failed to set SO_REUSEADDR");
+    }
+
+    // 设置为非阻塞模式
+    if (!platform::setNonBlocking(server_fd))
+    {
+        platform::closeSocket(server_fd);
+        throw std::runtime_error("Failed to set non-blocking mode");
+    }
+
+    // 绑定到监听端口和地址
+    if (HttpServerUtil::bindSocket(server_fd, static_cast<long long>(listen_port), listen_host) == -1)
+    {
+        platform::closeSocket(server_fd);
+        throw std::runtime_error("Failed to bind to " + listen_host + ":" + 
+                                 std::to_string(static_cast<long long>(listen_port)));
+    }
+
+    // 开始监听
+    if (!HttpServerUtil::listenSocket(server_fd, 10))
+    {
+        platform::closeSocket(server_fd);
+        throw std::runtime_error("Failed to listen on port " + 
+                                 std::to_string(static_cast<long long>(listen_port)));
+    }
+
+    std::cout << "Port forwarder listening on " << listen_host << ":" 
+              << static_cast<long long>(listen_port) << " -> " << target_host << ":" 
+              << static_cast<long long>(target_port) << std::endl;
 }

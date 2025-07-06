@@ -16,6 +16,8 @@
 #include <string>
 int each_process(uint16_t port)
 {
+
+    printf("线程生效\n");
     LocalFiles LocalFileCache;
     HttpServer server{port};
     // std::cout << std::format("http://localhost:{}", server.getPort()) << '\n';
@@ -328,21 +330,24 @@ int each_process(uint16_t port)
 int main()
 {
     threadpool tp{6};
-    tp.enqueue([]() { each_process(8080); });
     tp.enqueue([]() { each_process(8081); });
+    tp.enqueue([]() { each_process(8080); });
     tp.enqueue([]() { each_process(8082); });
-    tp.enqueue(
-        []()
-        {
-            // 创建端口转发器：8080 <-> 3000
-            portForwarder forwarder(static_cast<port>(3000), static_cast<port>(8080));
+    // tp.enqueue(
+    //     []()
+    //     {
+    //         // 创建端口转发器：8080 <-> 3000
+    //         portForwarder forwarder(static_cast<port>(3000), static_cast<port>(8080),
+    //         "127.0.0.1",
+    //                                 "0.0.0.0");
+    //         // portForwarder forwarder(static_cast<port>(3000), static_cast<port>(8080));
 
-            // 在事件循环中运行
-            while (true)
-            {
-                forwarder.eventGo();
-            }
-        });
+    //         // 在事件循环中运行
+    //         while (true)
+    //         {
+    //             forwarder.eventGo();
+    //         }
+    //     });
     tp.enqueue(
         [&]()
         {

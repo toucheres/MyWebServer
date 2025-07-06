@@ -26,7 +26,10 @@ class portForwarder : co_async
     std::vector<std::unique_ptr<ConnectionPair>> connections;
 
   public:
-    portForwarder(port from, port to, const std::string& target_host = "127.0.0.1");
+    // 修改构造函数签名，明确参数含义
+    portForwarder(port listen_port, port target_port, 
+                  const std::string& target_host = "127.0.0.1",
+                  const std::string& listen_host = "0.0.0.0");
     portForwarder(fileDiscribe from, fileDiscribe to);
     ~portForwarder();
     
