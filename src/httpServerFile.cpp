@@ -114,6 +114,9 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
     size_t chunk_data_read = 0;
     std::string chunked_body;
 
+    // 新增：原始内容缓存
+    std::string original_content_buffer;
+
     while (self->getStatus())
     {
         SocketFile& sfile = self->getSocketFile();
@@ -134,6 +137,13 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
         }
 
         std::string_view tp = sfile.read_line();
+        
+        // 新增：将每一行都添加到原始内容缓存中
+        if (!tp.empty())
+        {
+            original_content_buffer.append(tp.data(), tp.length());
+        }
+
         switch (state)
         {
         case ParseState::REQUEST_LINE:
@@ -155,10 +165,6 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                     path = urlDecode(encodedPath);
                     version =
                         std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
-
-                    // self->getContent()["method"] = method;
-                    // self->getContent()["path"] = path;
-                    // self->getContent()["version"] = version;
 
                     self->getContent()[HttpResponse::RequestKey::method] = method;
                     self->getContent()[HttpResponse::RequestKey::path] = path;
@@ -279,6 +285,8 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 if (lefted != "")
                 {
                     tp = lefted;
+                    // 新增：将读取的字节数据也添加到原始内容缓存
+                    original_content_buffer.append(tp.data(), tp.length());
                 }
                 else
                 {
@@ -294,7 +302,6 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 // TODO 读超了退回
                 if (body_read >= content_length)
                 {
-                    // self->getContent().try_emplace("postcontent", body_buffer);
                     self->getContent()[HttpResponse::RequestKey::postcontent] = body_buffer;
                     state = ParseState::COMPLETE;
                 }
@@ -338,6 +345,9 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                     continue;
                 }
 
+                // 新增：将分块数据也添加到原始内容缓存
+                original_content_buffer.append(chunk_data.data(), chunk_data.size());
+
                 chunked_body.append(chunk_data.data(), chunk_data.size());
                 chunk_data_read += chunk_data.size();
 
@@ -347,6 +357,8 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                     std::string_view crlf = sfile.read_line();
                     if (!crlf.empty() && crlf == "\r\n")
                     {
+                        // 新增：将CRLF也添加到原始内容缓存
+                        original_content_buffer.append(crlf.data(), crlf.size());
                         state = ParseState::CHUNKED_SIZE; // 继续读取下一个分块
                     }
                     // 如果CRLF还没完全读取，在下次循环中继续
@@ -363,7 +375,6 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             if (tp == "\r\n")
             {
                 // 分块传输结束
-                // self->getContent().try_emplace("postcontent", chunked_body);
                 self->getContent()[HttpResponse::RequestKey::postcontent] = chunked_body;
                 self->getContent()["chunked_complete"] = "true";
                 state = ParseState::COMPLETE;
@@ -393,6 +404,9 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
         {
             if (sfile.getSocketStatus() != SocketStatus::WRONG)
             {
+                // 新增：在处理请求前，将完整的原始内容存储到content中
+                self->getContent()[HttpResponse::RequestKey::orignal_content] = original_content_buffer;
+
                 self->handle();
 
                 // 重置状态变量
@@ -403,6 +417,9 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 current_chunk_size = 0;
                 chunk_data_read = 0;
                 chunked_body.clear();
+                
+                // 新增：重置原始内容缓存
+                original_content_buffer.clear();
             }
         }
         break;
@@ -647,7 +664,6 @@ HttpResponse::operator std::string()
     oss << body_;
     return oss.str();
 }
-// ...existing code...
 
 // 新增：网络套接字相关方法实现
 int HttpServerUtil::makeSocket()
@@ -936,5 +952,3 @@ int HttpServerUtil::connectToServer(const std::string& host, uint16_t port, int 
     platform::closeSocket(client_fd);
     return static_cast<int>(INVALID_SOCKET_VALUE);
 }
-
-// ...existing code...

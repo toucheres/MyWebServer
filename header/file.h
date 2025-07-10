@@ -1,5 +1,6 @@
 #pragma once
 #include "platform.h" // 添加平台兼容性头文件
+#include "port_fd.h"
 #include <corutine.hpp>
 #include <cstddef>
 #include <memory>
@@ -74,7 +75,7 @@ struct SocketFile : public co_async
         SocketStatus socket_status = SocketStatus::OK; // Changed from fd_state
     };
     static Task<> eventfun(std::shared_ptr<CONTEXT> context);
-    Task_Away<CONTEXT> handle_ = eventfun; // Made private, renamed
+    Task_Away<CONTEXT> handle_{eventfun}; // Made private, renamed
 
   public:
     virtual EventStatus eventGo() final; // Changed return type
@@ -96,6 +97,9 @@ struct SocketFile : public co_async
     SocketFile& operator=(SocketFile&& move);
 
     SocketStatus getSocketStatus() const; // Getter for socket_status
+
+    // 添加创建TCP客户端的静态方法
+    static SocketFile createTcpClient(port target_port, const std::string& target_ip);
 };
 
 struct async_in_out : public co_async

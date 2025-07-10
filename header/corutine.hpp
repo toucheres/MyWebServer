@@ -536,6 +536,7 @@ template <> class Task<void, void>
 
     Task(Task&& other) noexcept : handle(other.handle)
     {
+        // this->handle = other.handle;
         other.handle = nullptr;
     }
 
@@ -711,6 +712,11 @@ template <class CONTEXT> class Task_Away
     Task_Away(Task_Away&& other) noexcept
         : context(other.context), corutine(std::move(other.corutine))
     {
+        if (this != &other)
+        {
+            other.corutine = nullptr;
+            other.context = nullptr;
+        }
     }
 
     Task_Away& operator=(Task_Away&& other) noexcept
@@ -719,6 +725,8 @@ template <class CONTEXT> class Task_Away
         {
             context = std::move(other.context);
             corutine = std::move(other.corutine);
+            other.corutine = nullptr;
+            other.context = nullptr;
         }
         return *this;
     }

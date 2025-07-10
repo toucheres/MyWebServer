@@ -71,7 +71,7 @@ SocketFile::SocketFile(int a_fd)
 SocketFile::~SocketFile()
 {
     // 防止临时变量析构后close
-    if (handle_.get_context() != nullptr) // Use private member
+    if (handle_) // Use private member
     {
         platform::closeSocket(handle_.get_context()->fd);
     }
@@ -79,8 +79,6 @@ SocketFile::~SocketFile()
 
 SocketFile::SocketFile(SocketFile&& move) : handle_(std::move(move.handle_)) // Use private member
 {
-    move.handle_.get_context() =
-        nullptr; // Access context via get_context() if needed, or ensure Task_Away handles this
 }
 
 SocketFile& SocketFile::operator=(SocketFile&& move)
@@ -125,8 +123,8 @@ Task<> SocketFile::eventfun(std::shared_ptr<CONTEXT> context)
         platform::setNonBlocking(context->fd);
 
         // 读取数据 - 使用平台无关的接口
-        ssize_t n = platform::readSocket(context->fd, context->content.data() + context->r_right,
-                                         context->content.size() - context->r_right);
+        int n = platform::readSocket(context->fd, context->content.data() + context->r_right,
+                                     context->content.size() - context->r_right);
 
         if (n > 0)
         {
@@ -462,4 +460,48 @@ async_in_out& async_in_out::getInstance()
 {
     static async_in_out instance;
     return instance;
+}
+
+SocketFile SocketFile::createTcpClient(port target_port, const std::string& target_ip)
+{
+    // 创建socket
+    socket_t client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_fd == INVALID_SOCKET_VALUE)
+    {
+        // 返回一个无效的SocketFile
+        SocketFile invalid_socket;
+        return invalid_socket;
+    }
+
+    // 设置服务器地址
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(static_cast<uint16_t>(target_port));
+
+    // 转换IP地址
+    if (inet_pton(AF_INET, target_ip.c_str(), &server_addr.sin_addr) <= 0)
+    {
+        close(client_fd);
+        SocketFile invalid_socket;
+        return invalid_socket;
+    }
+
+    // 连接到服务器
+    if (connect(client_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0)
+    {
+        close(client_fd);
+        SocketFile invalid_socket;
+        return invalid_socket;
+    }
+
+    // 创建SocketFile对象
+    SocketFile client_socket(client_fd);
+
+    // 设置为非阻塞模式
+    if (!client_socket.setNonBlocking())
+    {
+        client_socket.closeIt();
+    }
+
+    return client_socket;
 }

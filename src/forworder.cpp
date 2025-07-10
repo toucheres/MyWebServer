@@ -1,8 +1,10 @@
 #include "forworder.h"
+#include "corutine.hpp"
+#include "format.h"
 #include "httpServerFile.h"
 #include <algorithm>
 
-// portForwarder::portForwarder(port a_from, port a_to, const std::string& target_host)
+// tcpForwarder::tcpForwarder(port a_from, port a_to, const std::string& target_host)
 //     : target_port(a_to), target_host(target_host)
 // {
 //     // 创建并配置服务器套接字
@@ -42,11 +44,12 @@
 //                                  std::to_string(static_cast<long long>(a_from)));
 //     }
 
-//     // std::cout << "Port forwarder listening on port " << static_cast<long long>(a_from) << " -> "
+//     // std::cout << "Port forwarder listening on port " << static_cast<long long>(a_from) << " ->
+//     "
 //     //       << target_host << ":" << static_cast<long long>(a_to) << std::endl;
 // }
 
-portForwarder::~portForwarder()
+tcpForwarder::~tcpForwarder()
 {
     if (server_fd != -1)
     {
@@ -57,7 +60,7 @@ portForwarder::~portForwarder()
     connections.clear();
 }
 
-EventStatus portForwarder::eventGo()
+EventStatus tcpForwarder::eventGo()
 {
     // 1. 尝试接受新连接
     acceptNewConnection();
@@ -71,7 +74,7 @@ EventStatus portForwarder::eventGo()
     return EventStatus::Continue;
 }
 
-void portForwarder::acceptNewConnection()
+void tcpForwarder::acceptNewConnection()
 {
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
@@ -134,7 +137,7 @@ void portForwarder::acceptNewConnection()
     //     << " (Total: " << connections.size() << " connections)" << std::endl;
 }
 
-void portForwarder::forwardData()
+void tcpForwarder::forwardData()
 {
     for (auto& conn : connections)
     {
@@ -188,7 +191,7 @@ void portForwarder::forwardData()
     }
 }
 
-void portForwarder::cleanupDeadConnections()
+void tcpForwarder::cleanupDeadConnections()
 {
     // 移除已断开的连接
     auto it =
@@ -205,7 +208,7 @@ void portForwarder::cleanupDeadConnections()
 }
 
 // 文件描述符版本的构造函数
-portForwarder::portForwarder(fileDiscribe from, fileDiscribe to)
+tcpForwarder::tcpForwarder(fileDiscribe from, fileDiscribe to)
 {
     // 这个版本直接使用已有的文件描述符
     // 创建单个连接对
@@ -218,9 +221,8 @@ portForwarder::portForwarder(fileDiscribe from, fileDiscribe to)
 }
 
 // 新增构造函数：支持监听主机和目标主机
-portForwarder::portForwarder(port listen_port, port target_port, 
-                            const std::string& target_host,
-                            const std::string& listen_host)
+tcpForwarder::tcpForwarder(port listen_port, port target_port, const std::string& target_host,
+                           const std::string& listen_host)
     : target_port(target_port), target_host(target_host)
 {
     // 创建并配置服务器套接字
@@ -245,10 +247,11 @@ portForwarder::portForwarder(port listen_port, port target_port,
     }
 
     // 绑定到监听端口和地址
-    if (HttpServerUtil::bindSocket(server_fd, static_cast<long long>(listen_port), listen_host) == -1)
+    if (HttpServerUtil::bindSocket(server_fd, static_cast<long long>(listen_port), listen_host) ==
+        -1)
     {
         platform::closeSocket(server_fd);
-        throw std::runtime_error("Failed to bind to " + listen_host + ":" + 
+        throw std::runtime_error("Failed to bind to " + listen_host + ":" +
                                  std::to_string(static_cast<long long>(listen_port)));
     }
 
@@ -256,11 +259,28 @@ portForwarder::portForwarder(port listen_port, port target_port,
     if (!HttpServerUtil::listenSocket(server_fd, 10))
     {
         platform::closeSocket(server_fd);
-        throw std::runtime_error("Failed to listen on port " + 
+        throw std::runtime_error("Failed to listen on port " +
                                  std::to_string(static_cast<long long>(listen_port)));
     }
 
-    // std::cout << "Port forwarder listening on " << listen_host << ":" 
-    //           << static_cast<long long>(listen_port) << " -> " << target_host << ":" 
+    // std::cout << "Port forwarder listening on " << listen_host << ":"
+    //           << static_cast<long long>(listen_port) << " -> " << target_host << ":"
     //           << static_cast<long long>(target_port) << std::endl;
+}
+httpForwarder::httpForwarder(port listen_port, port target_port, const std::string& target_host,
+                             const std::string& listen_host)
+    : forwardserver((long long)listen_port, listen_host)
+{
+    forwardserver.addCallbackFormat(
+        Format{"", Format::Type::prefix},
+        [](serverFile& in)
+        {
+            std::string get = in.getContent()[HttpResponse::RequestKey::orignal_content];
+            
+        });
+}
+EventStatus httpForwarder::eventGo()
+{
+    this->ma.go();
+    return EventStatus::Continue;
 }

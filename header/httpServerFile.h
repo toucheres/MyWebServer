@@ -50,6 +50,7 @@ struct HttpResponse
         static constexpr const char* content_length = "content-length";
         static constexpr const char* postcontent = "postcontent";
         static constexpr const char* cookie = "cookie";
+        static constexpr const char* orignal_content = "orignal_content";
     };
     class ResponseKey
     {
