@@ -333,14 +333,20 @@ int each_process(uint16_t port)
     }
     return 0;
 }
-
+auto callbackfun(HttpClient& self)
+{
+    std::cout << "get!: \n";
+    for (auto& each : self.getContent())
+    {
+        std::cout << each.first << ": " << each.second << "\n";
+    }
+    std::cout << "\n";
+};
 int main()
 {
     threadpool tp{6};
     // tp.enqueue([]() { each_process(8081); });
     // tp.enqueue([]() { each_process(8080); });
-    // ...existing code...
-
     tp.enqueue(
         []()
         {
@@ -441,27 +447,18 @@ int main()
         {
             std::this_thread::sleep_for(std::chrono::seconds(3));
             std::cout << "start client!\n";
-            HttpClient client{port(8080), "127.0.0.1"};
-            client.setcallback(
-                [](HttpClient& self)
-                {
-                    std::cout << "get!: \n";
-                    for (auto& each : self.getContent())
-                    {
-                        std::cout << each.first << ": " << each.second << "\n";
-                    }
-                    std::cout << "\n";
-                });
-            // tp.enqueue(
-            //     [&client]()
-            //     {
-                    std::this_thread::sleep_for(std::chrono::seconds(3));
-                    std::cout << "write socket\n";
-                    client.cilent_socket.writeFile(HttpRequst::GET("/"));
-                // });
+            HttpClient client{port(8080), "47.108.187.235"};
+
+            client.setcallback(callbackfun);
+
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+            std::cout << "write socket\n";
+            client.cilent_socket.writeFile(HttpRequst::GET("/"));
+
             while (client.eventGo() == EventStatus::Continue)
             {
             }
+            std::cout << "quit\n";
         });
     // tp.enqueue(
     //     []()
@@ -490,3 +487,87 @@ int main()
         });
     return 0;
 }
+// get!:
+// body: <!DOCTYPE html>
+// <html lang="zh-CN">
+
+// <head>
+//     <meta charset="UTF-8">
+//     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+//     <title>聊天应用</title>
+//     <link rel="stylesheet" href="style.css">
+// </head>
+
+// <body>
+//     <div class="container">
+//         <!-- 登录表单 -->
+//         <div id="loginForm" class="form-container">
+//             <h2>登录</h2>
+//             <form id="login">
+//                 <div class="input-group">
+//                     <input type="text" id="loginUsername" placeholder="用户名" required>
+//                 </div>
+//                 <div class="input-group">
+//                     <input type="password" id="loginPassword" placeholder="密码" required>
+//                 </div>
+//                 <button type="submit">登录</button>
+//                 <p>还没有账号？ <a href="#" onclick="showRegister()">立即注册</a></p>
+//             </form>
+//         </div>
+
+//         <!-- 注册表单 -->
+//         <div id="registerForm" class="form-container hidden">
+//             <h2>注册</h2>
+//             <form id="register">
+//                 <div class="input-group">
+//                     <input type="text" id="registerUsername" placeholder="用户名" required>
+//                 </div>
+
+// connection: keep-alive
+// content-length: 3028
+// content-type: text/html
+// original_content: HTTP/1.1 200 OK
+// Server: co_Http
+// Content-Type: text/html
+// Connection: keep-alive
+// Content-Length: 3028
+
+// <!DOCTYPE html>
+// <html lang="zh-CN">
+
+// <head>
+//     <meta charset="UTF-8">
+//     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+//     <title>聊天应用</title>
+//     <link rel="stylesheet" href="style.css">
+// </head>
+
+// <body>
+//     <div class="container">
+//         <!-- 登录表单 -->
+//         <div id="loginForm" class="form-container">
+//             <h2>登录</h2>
+//             <form id="login">
+//                 <div class="input-group">
+//                     <input type="text" id="loginUsername" placeholder="用户名" required>
+//                 </div>
+//                 <div class="input-group">
+//                     <input type="password" id="loginPassword" placeholder="密码" required>
+//                 </div>
+//                 <button type="submit">登录</button>
+//                 <p>还没有账号？ <a href="#" onclick="showRegister()">立即注册</a></p>
+//             </form>
+//         </div>
+
+//         <!-- 注册表单 -->
+//         <div id="registerForm" class="form-container hidden">
+//             <h2>注册</h2>
+//             <form id="register">
+//                 <div class="input-group">
+//                     <input type="text" id="registerUsername" placeholder="用户名" required>
+//                 </div>
+
+// reason_phrase: OK
+// server: co_Http
+// status_code: 200
+// version: HTTP/1.1
