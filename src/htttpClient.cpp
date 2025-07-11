@@ -324,9 +324,9 @@ Task<void, void> HttpClientUtil::eventloop(HttpClient* self)
                 {
                     self->callback(*self);
                 }
-
-                // 判断是否需要关闭连接或继续保持连接
-                if (should_close_connection || !connection_keep_alive)
+                state = HttpServerUtil::ParseState::REQUEST_LINE;
+                    // 判断是否需要关闭连接或继续保持连接
+                    if (should_close_connection || !connection_keep_alive)
                 {
                     // 关闭连接并退出
                     co_return;
