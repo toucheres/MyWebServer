@@ -1,11 +1,72 @@
 #pragma once
-// #include "reflection.hpp"
-#include "reflection.h"
+#include "reflection_ylt.hpp"
+#include <array>
 #include <charconv>
+#include <list>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
+#include <vector>
+
+// 容器类型检测模板（移到全局作用域）
+template <typename T> struct is_vector : std::false_type
+{
+};
+
+template <typename T, typename Alloc> struct is_vector<std::vector<T, Alloc>> : std::true_type
+{
+};
+
+template <typename T> struct is_list : std::false_type
+{
+};
+
+template <typename T, typename Alloc> struct is_list<std::list<T, Alloc>> : std::true_type
+{
+};
+
+template <typename T> struct is_map : std::false_type
+{
+};
+
+template <typename K, typename V, typename Compare, typename Alloc>
+struct is_map<std::map<K, V, Compare, Alloc>> : std::true_type
+{
+};
+
+template <typename K, typename V, typename Hash, typename Equal, typename Alloc>
+struct is_map<std::unordered_map<K, V, Hash, Equal, Alloc>> : std::true_type
+{
+};
+
+// 添加array类型检测
+template <typename T> struct is_array : std::false_type
+{
+};
+
+template <typename T, std::size_t N> struct is_array<std::array<T, N>> : std::true_type
+{
+};
+
+template <typename T> static constexpr bool is_vector_v = is_vector<T>::value;
+
+template <typename T> static constexpr bool is_list_v = is_list<T>::value;
+
+template <typename T> static constexpr bool is_map_v = is_map<T>::value;
+
+template <typename T> static constexpr bool is_array_v = is_array<T>::value;
+
+template <typename T>
+static constexpr bool is_container_v =
+    is_vector_v<T> || is_list_v<T> || is_map_v<T> || is_array_v<T>;
+
+// concept声明移到全局作用域
+template <typename T>
+concept reflectable =
+    Aggregate<T> || is_list_v<T> || is_vector_v<T> || is_map_v<T> || is_array_v<T>;
 
 class json
 {
@@ -22,7 +83,7 @@ class json
     };
 
     json() = default;
-    template <Aggregate T> static json from(T in, options opts = defultOpt)
+    template <reflectable T> static json from(T in, options opts = defultOpt)
     {
         return json(in, opts, true); // 明确指定为根级别
     }
@@ -33,11 +94,11 @@ class json
         return j;
     }
 
-    template <Aggregate T> static T to(json in, options opts = defultOpt)
+    template <reflectable T> static T to(json in, options opts = defultOpt)
     {
         return from_json<T>(in.content, opts);
     }
-    template <Aggregate T> static T to(std::string in, options opts = defultOpt)
+    template <reflectable T> static T to(std::string in, options opts = defultOpt)
     {
         json j;
         j.content = in;
@@ -53,8 +114,11 @@ class json
     {
         return os << j.content;
     }
-    // 修改构造函数，添加选项参数
-    template <Aggregate T> json(T in, options opts = {}, bool is_root = true)
+
+    // 修改构造函数，添加选项参数 - 聚合类型
+    template <Aggregate T>
+        requires(!is_array_v<T>) // 排除std::array，避免重载歧义
+    json(T in, options opts = {}, bool is_root = true)
     {
         // 检查类型是否只有一个成员
         constexpr size_t member_count = get_member_count_v<T>;
@@ -96,8 +160,24 @@ class json
         }
     }
 
+    // 添加容器类型的构造函数
+    template <typename T>
+        requires(is_vector_v<T> || is_list_v<T> || is_array_v<T>)
+    json(T in, options opts = {}, bool = true) // 移除参数名避免警告
+    {
+        content = serialize_array(in, opts);
+    }
+
+    // 添加map类型的构造函数
+    template <typename T>
+        requires is_map_v<T>
+    json(T in, options opts = {}, bool = true) // 移除参数名避免警告
+    {
+        content = serialize_map(in, opts);
+    }
+
     // 将原有的序列化逻辑提取为单独方法
-    template <Aggregate T> void serialize_normal(T in, options opts)
+    template <reflectable T> void serialize_normal(T in, options opts)
     {
         content += "{";
         visit_each_member(
@@ -108,8 +188,9 @@ class json
 
                 static_assert(
                     requires { (std::string) arg; } || requires { std::to_string(arg); } ||
-                        MeaningfulAggregate<ArgType>,
-                    "不支持的成员类型：必须是可转为字符串、有 std::to_string 支持或嵌套聚合类");
+                        MeaningfulAggregate<ArgType> || is_container_v<ArgType>,
+                    "不支持的成员类型：必须是可转为字符串、有 std::to_string "
+                    "支持、嵌套聚合类或容器类");
 
                 if constexpr (requires { (std::string) arg; })
                 {
@@ -122,6 +203,19 @@ class json
                 else if constexpr (requires { std::to_string(arg); })
                 {
                     add_string(get_member_names<M>()[index], std::to_string(arg));
+                }
+                else if constexpr (is_vector_v<ArgType> || is_list_v<ArgType> ||
+                                   is_array_v<ArgType>)
+                {
+                    // 处理vector、list和array
+                    std::string array_content = serialize_array(arg, opts);
+                    add_array(get_member_names<M>()[index], array_content);
+                }
+                else if constexpr (is_map_v<ArgType>)
+                {
+                    // 处理map
+                    std::string map_content = serialize_map(arg, opts);
+                    add_object(get_member_names<M>()[index], map_content);
                 }
                 else if constexpr (MeaningfulAggregate<ArgType>)
                 {
@@ -136,37 +230,150 @@ class json
         content += "}";
     }
 
+    // 序列化数组容器
+    template <typename Container>
+    std::string serialize_array(const Container& container, options opts)
+    {
+        std::string result = "[";
+        bool first = true;
+
+        for (const auto& item : container)
+        {
+            if (!first)
+                result += ",";
+            first = false;
+
+            using ItemType = std::decay_t<decltype(item)>;
+
+            if constexpr (requires { (std::string) item; })
+            {
+                result += "\"" + escape_string((std::string)item) + "\"";
+            }
+            else if constexpr (std::is_integral_v<ItemType> || std::is_floating_point_v<ItemType>)
+            {
+                result += std::to_string(item);
+            }
+            else if constexpr (requires { std::to_string(item); })
+            {
+                result += "\"" + escape_string(std::to_string(item)) + "\"";
+            }
+            else if constexpr (MeaningfulAggregate<ItemType>)
+            {
+                json nested(item, opts, false);
+                result += nested.content;
+            }
+            else if constexpr (is_container_v<ItemType>)
+            {
+                if constexpr (is_vector_v<ItemType> || is_list_v<ItemType> || is_array_v<ItemType>)
+                {
+                    result += serialize_array(item, opts);
+                }
+                else if constexpr (is_map_v<ItemType>)
+                {
+                    result += serialize_map(item, opts);
+                }
+            }
+        }
+
+        result += "]";
+        return result;
+    }
+
+    // 序列化map容器
+    template <typename MapType> std::string serialize_map(const MapType& map, options opts)
+    {
+        std::string result = "{";
+        bool first = true;
+
+        for (const auto& [key, value] : map)
+        {
+            if (!first)
+                result += ",";
+            first = false;
+
+            // 键必须是字符串类型
+            std::string key_str;
+            if constexpr (requires { (std::string) key; })
+            {
+                key_str = (std::string)key;
+            }
+            else if constexpr (requires { std::to_string(key); })
+            {
+                key_str = std::to_string(key);
+            }
+
+            result += "\"" + escape_string(key_str) + "\":";
+
+            using ValueType = std::decay_t<decltype(value)>;
+
+            if constexpr (requires { (std::string) value; })
+            {
+                result += "\"" + escape_string((std::string)value) + "\"";
+            }
+            else if constexpr (std::is_integral_v<ValueType> || std::is_floating_point_v<ValueType>)
+            {
+                result += std::to_string(value);
+            }
+            else if constexpr (requires { std::to_string(value); })
+            {
+                result += "\"" + escape_string(std::to_string(value)) + "\"";
+            }
+            else if constexpr (MeaningfulAggregate<ValueType>)
+            {
+                json nested(value, opts, false);
+                result += nested.content;
+            }
+            else if constexpr (is_container_v<ValueType>)
+            {
+                if constexpr (is_vector_v<ValueType> || is_list_v<ValueType>)
+                {
+                    result += serialize_array(value, opts);
+                }
+                else if constexpr (is_map_v<ValueType>)
+                {
+                    result += serialize_map(value, opts);
+                }
+            }
+        }
+
+        result += "}";
+        return result;
+    }
+
     // 添加字符串转义函数
-    static std::string escape_string(std::string_view str) {
+    static std::string escape_string(std::string_view str)
+    {
         std::string result;
         result.reserve(str.size() * 2); // 预留空间，避免频繁重分配
-        
-        for (char c : str) {
-            switch (c) {
-                case '"':
-                    result += "\\\"";
-                    break;
-                case '\\':
-                    result += "\\\\";
-                    break;
-                case '\b':
-                    result += "\\b";
-                    break;
-                case '\f':
-                    result += "\\f";
-                    break;
-                case '\n':
-                    result += "\\n";
-                    break;
-                case '\r':
-                    result += "\\r";
-                    break;
-                case '\t':
-                    result += "\\t";
-                    break;
-                default:
-                    result += c;
-                    break;
+
+        for (char c : str)
+        {
+            switch (c)
+            {
+            case '"':
+                result += "\\\"";
+                break;
+            case '\\':
+                result += "\\\\";
+                break;
+            case '\b':
+                result += "\\b";
+                break;
+            case '\f':
+                result += "\\f";
+                break;
+            case '\n':
+                result += "\\n";
+                break;
+            case '\r':
+                result += "\\r";
+                break;
+            case '\t':
+                result += "\\t";
+                break;
+            default:
+                result += c;
+                break;
             }
         }
         return result;
@@ -202,6 +409,15 @@ class json
     void add_object(std::string_view key, std::string_view value)
     {
         content += std::string_view("\"");
+        content += key;
+        content += "\":";
+        content += value;
+    }
+
+    // 添加一个处理数组的方法
+    void add_array(std::string_view key, std::string_view value)
+    {
+        content += "\"";
         content += key;
         content += "\":";
         content += value;
@@ -295,6 +511,31 @@ class json
             return result;
         }
 
+        std::string parse_array()
+        {
+            if (json_str[pos] != '[')
+                throw std::runtime_error("Expected '[' at position " + std::to_string(pos));
+
+            size_t array_start = pos;
+            int bracket_level = 1;
+            pos++; // 跳过 '['
+
+            while (bracket_level > 0 && pos < json_str.size())
+            {
+                if (json_str[pos] == '[')
+                    bracket_level++;
+                else if (json_str[pos] == ']')
+                    bracket_level--;
+                pos++;
+            }
+
+            if (bracket_level != 0)
+                throw std::runtime_error("Unterminated array at position " +
+                                         std::to_string(array_start));
+
+            return std::string(json_str.substr(array_start, pos - array_start));
+        }
+
         std::unordered_map<std::string, std::string> parse_object()
         {
             if (json_str[pos] != '{')
@@ -354,6 +595,11 @@ class json
 
                     // 包含整个对象的JSON字符串，包括花括号
                     result[key] = json_str.substr(obj_start, pos - obj_start);
+                }
+                else if (json_str[pos] == '[')
+                {
+                    // 数组值 - 存储为原始JSON字符串
+                    result[key] = parse_array();
                 }
                 else if (std::isdigit(json_str[pos]) || json_str[pos] == '-')
                 {
@@ -432,13 +678,6 @@ class json
         }
     };
 
-    // 在现有 from_json 函数之外添加此重载
-    template <MeaningfulAggregate T>
-    static T from_json(const std::string& json_str, options opts = defultOpt)
-    {
-        return from_json<T>(std::string_view(json_str), opts);
-    }
-
     // 尝试将JSON值解析为特定类型
     template <typename T> static bool try_parse_value(const std::string& value, T& result)
     {
@@ -471,15 +710,6 @@ class json
                 result = std::stof(temp);
                 return true;
             }
-            // else if constexpr (requires { result.content; })
-            // {
-            //     // 处理带有content成员的类型
-            //     std::string temp = value;
-            //     if (temp.size() >= 2 && temp.front() == '"' && temp.back() == '"')
-            //         temp = temp.substr(1, temp.size() - 2);
-            //     result.content = temp;
-            //     return true;
-            // }
         }
         catch (...)
         {
@@ -488,8 +718,16 @@ class json
         return false;
     }
 
-    // 从 JSON 字符串反序列化到聚合类型
+    // 聚合类型的反序列化 - 优先级最低
     template <MeaningfulAggregate T>
+        requires(!is_container_v<T>)
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return from_json<T>(std::string_view(json_str), opts);
+    }
+
+    template <MeaningfulAggregate T>
+        requires(!is_container_v<T>)
     static T from_json(std::string_view json_str, options opts = defultOpt)
     {
         parser p(json_str);
@@ -526,6 +764,33 @@ class json
                         if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
                             value = value.substr(1, value.size() - 2);
                         member = std::stoi(value);
+                    }
+                    else if constexpr (is_vector_v<MemberType> || is_list_v<MemberType> ||
+                                       is_array_v<MemberType>)
+                    {
+                        // 处理数组容器（包括std::array）
+                        member = parse_array_to_container<MemberType>(value, opts);
+                    }
+                    else if constexpr (is_map_v<MemberType>)
+                    {
+                        // 处理map容器
+                        parser nested_parser(value);
+                        auto nested_data = nested_parser.parse();
+
+                        for (const auto& [key, val] : nested_data)
+                        {
+                            using KeyType = typename MemberType::key_type;
+                            using ValueType = typename MemberType::mapped_type;
+
+                            KeyType parsed_key{};
+                            ValueType parsed_value{};
+
+                            if (try_parse_value(key, parsed_key) &&
+                                try_parse_container_item(val, parsed_value, opts))
+                            {
+                                member[parsed_key] = parsed_value;
+                            }
+                        }
                     }
                     else if constexpr (MeaningfulAggregate<MemberType>)
                     {
@@ -572,5 +837,230 @@ class json
             });
 
         return result;
+    }
+
+    // std::array 特化 - 最高优先级
+    template <typename T>
+        requires is_array_v<T>
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    template <typename T>
+        requires is_array_v<T>
+    static T from_json(std::string_view json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    // vector/list 容器 - 高优先级
+    template <typename T>
+        requires(is_vector_v<T> || is_list_v<T>)
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    template <typename T>
+        requires(is_vector_v<T> || is_list_v<T>)
+    static T from_json(std::string_view json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    // map 容器 - 高优先级
+    template <typename T>
+        requires is_map_v<T>
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return from_json<T>(std::string_view(json_str), opts);
+    }
+
+    template <typename T>
+        requires is_map_v<T>
+    static T from_json(std::string_view json_str, options opts = defultOpt)
+    {
+        T result;
+        parser p(json_str);
+        auto parsed_data = p.parse();
+
+        for (const auto& [key, val] : parsed_data)
+        {
+            using KeyType = typename T::key_type;
+            using ValueType = typename T::mapped_type;
+
+            KeyType parsed_key{};
+            ValueType parsed_value{};
+
+            if (try_parse_value(key, parsed_key) &&
+                try_parse_container_item(val, parsed_value, opts))
+            {
+                result[parsed_key] = parsed_value;
+            }
+        }
+
+        return result;
+    }
+
+    // 解析数组内容到容器
+    template <typename Container>
+    static Container parse_array_to_container(std::string_view array_str, options opts = defultOpt)
+    {
+        Container result;
+
+        if (array_str.size() < 2 || array_str.front() != '[' || array_str.back() != ']')
+            return result;
+
+        // 去除方括号
+        array_str = array_str.substr(1, array_str.size() - 2);
+
+        // 简单的逗号分割（这里可以优化为更完整的JSON解析）
+        size_t pos = 0;
+        std::string current_item;
+        int bracket_level = 0;
+        int brace_level = 0;
+        bool in_string = false;
+        bool escaped = false;
+        size_t item_index = 0;
+
+        while (pos < array_str.size())
+        {
+            char c = array_str[pos];
+
+            if (!escaped && c == '"' && bracket_level == 0 && brace_level == 0)
+            {
+                in_string = !in_string;
+            }
+            else if (!in_string)
+            {
+                if (c == '[')
+                    bracket_level++;
+                else if (c == ']')
+                    bracket_level--;
+                else if (c == '{')
+                    brace_level++;
+                else if (c == '}')
+                    brace_level--;
+                else if (c == ',' && bracket_level == 0 && brace_level == 0)
+                {
+                    // 找到一个完整的项
+                    std::string trimmed = current_item;
+                    // 去除前后空格
+                    size_t start = trimmed.find_first_not_of(" \t\n\r");
+                    size_t end = trimmed.find_last_not_of(" \t\n\r");
+                    if (start != std::string::npos)
+                    {
+                        trimmed = trimmed.substr(start, end - start + 1);
+
+                        using ValueType = typename Container::value_type;
+                        ValueType item{};
+                        if (try_parse_container_item(trimmed, item, opts))
+                        {
+                            if constexpr (requires { result.push_back(item); })
+                            {
+                                result.push_back(std::move(item));
+                            }
+                            else if constexpr (is_array_v<Container>)
+                            {
+                                // 对于std::array，需要使用索引赋值
+                                if (item_index < result.size())
+                                {
+                                    result[item_index] = std::move(item);
+                                }
+                            }
+                        }
+                    }
+                    current_item.clear();
+                    item_index++;
+                    pos++;
+                    continue;
+                }
+            }
+
+            escaped = (!escaped && c == '\\');
+            current_item += c;
+            pos++;
+        }
+
+        // 处理最后一个项
+        if (!current_item.empty())
+        {
+            std::string trimmed = current_item;
+            size_t start = trimmed.find_first_not_of(" \t\n\r");
+            size_t end = trimmed.find_last_not_of(" \t\n\r");
+            if (start != std::string::npos)
+            {
+                trimmed = trimmed.substr(start, end - start + 1);
+
+                using ValueType = typename Container::value_type;
+                ValueType item{};
+                if (try_parse_container_item(trimmed, item, opts))
+                {
+                    if constexpr (requires { result.push_back(item); })
+                    {
+                        result.push_back(std::move(item));
+                    }
+                    else if constexpr (is_array_v<Container>)
+                    {
+                        // 对于std::array，需要使用索引赋值
+                        if (item_index < result.size())
+                        {
+                            result[item_index] = std::move(item);
+                        }
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    // 尝试解析容器项
+    template <typename T>
+    static bool try_parse_container_item(const std::string& value, T& result, options opts)
+    {
+        try
+        {
+            if constexpr (std::is_same_v<T, std::string>)
+            {
+                std::string temp = value;
+                if (temp.size() >= 2 && temp.front() == '"' && temp.back() == '"')
+                    temp = temp.substr(1, temp.size() - 2);
+                result = temp;
+                return true;
+            }
+            else if constexpr (std::is_integral_v<T>)
+            {
+                std::string temp = value;
+                if (temp.size() >= 2 && temp.front() == '"' && temp.back() == '"')
+                    temp = temp.substr(1, temp.size() - 2);
+                result = std::stoi(temp);
+                return true;
+            }
+            else if constexpr (std::is_floating_point_v<T>)
+            {
+                std::string temp = value;
+                if (temp.size() >= 2 && temp.front() == '"' && temp.back() == '"')
+                    temp = temp.substr(1, temp.size() - 2);
+                result = std::stof(temp);
+                return true;
+            }
+            else if constexpr (MeaningfulAggregate<T>)
+            {
+                result = from_json<T>(value, opts);
+                return true;
+            }
+            else if constexpr (is_container_v<T>)
+            {
+                result = from_json<T>(value, opts);
+                return true;
+            }
+        }
+        catch (...)
+        {
+            return false;
+        }
+        return false;
     }
 };

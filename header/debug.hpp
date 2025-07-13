@@ -1,34 +1,116 @@
 #pragma once
-#include "corutine.hpp"
 #include "file.h"
-#include "format.h"
-#include "forworder.h"
-#include "http.h"
-#include "httpClient.h"
 #include "httpServerFile.h"
 #include "json.hpp"
 #include "platform.h"
-#include "serverFile.h"
-#include "threadpool.hpp"
-#include "webSocketFile.h"
 #include <chrono>
 #include <cstdlib>
+#include <format>
+#include <iostream>
+#include <map>
+#include <ostream>
+#include <ranges>
+#include <source_location>
 #include <string>
 #include <thread>
+
+class printer
+{
+  public:
+    auto with_source_imf(auto&& arg, std::ostream& out = std::cout,
+                         std::source_location imf = std::source_location::current())
+    {
+        out << std::format("[file: {}:{}:{}]: {}\n", imf.file_name(), imf.line(), imf.column(),
+                           arg);
+    }
+
+    // 新增：带名字的打印方法
+    template <typename T>
+    auto debug_var(const char* name, T&& value, std::ostream& out = std::cout,
+                   std::source_location imf = std::source_location::current())
+    {
+        out << std::format("[file: {}:{}:{}]: {} = {}\n", imf.file_name(), imf.line(), imf.column(),
+                           name, std::forward<T>(value));
+    }
+
+    // 特化版本：处理容器
+    template <std::ranges::range T>
+    auto debug_var(const char* name, T&& container, std::ostream& out = std::cout,
+                   std::source_location imf = std::source_location::current())
+    {
+        out << std::format("[file: {}:{}:{}]: {} = [", imf.file_name(), imf.line(), imf.column(),
+                           name);
+
+        bool first = true;
+        for (const auto& item : container)
+        {
+            if (!first)
+            {
+                out << ", ";
+            }
+            if constexpr (requires { out << item; })
+            {
+                out << item;
+            }
+            else if constexpr (requires { std::to_string(item); })
+            {
+                out << std::to_string(item);
+            }
+            else if constexpr (requires { json::from(item); })
+            {
+                out << json::from(item);
+            }
+            else
+            {
+                out << "unkown_format";
+            }
+
+            first = false;
+        }
+        out << "]\n";
+    }
+
+    // 特化版本：处理map
+    template <typename K, typename V>
+    auto debug_var(const char* name, const std::map<K, V>& map_obj, std::ostream& out = std::cout,
+                   std::source_location imf = std::source_location::current())
+    {
+        out << std::format("[file: {}:{}:{}]: {} = {{\n", imf.file_name(), imf.line(), imf.column(),
+                           name);
+
+        for (const auto& [key, value] : map_obj)
+        {
+            out << std::format("  {} : {},\n", key, value);
+        }
+        out << "}\n";
+    }
+};
+
+// 方便使用的宏定义
+#define DBG(var) Debugger::print.debug_var(#var, var)
+#define DBG_TO(var, stream) Debugger::print.debug_var(#var, var, stream)
+
+// 多变量打印宏
+#define DBG_VARS(...)                                                                              \
+    do                                                                                             \
+    {                                                                                              \
+        std::cout << std::format("[{}:{}] ", __FILE__, __LINE__);                                  \
+        ([&]() { std::cout << #__VA_ARGS__ << " = " << (__VA_ARGS__) << "; "; }(), ...);           \
+        std::cout << std::endl;                                                                    \
+    } while (0)
+
 namespace Debugger
 {
-    class print
+    inline static printer print;
+    class network
     {
       public:
-    };
-    namespace network
-    {
-        inline auto TcpTest()
+        inline static auto TcpTest(port port)
         {
             int so = HttpServerUtil::makeSocket();
-            HttpServerUtil::bindSocket(so, 8080);
+            HttpServerUtil::bindSocket(so, (int)port);
             HttpServerUtil::listenSocket(so);
-            std::cout << "TCP测试服务器启动在端口 8080" << std::endl;
+            std::cout << std::format("TCP测试服务器启动在端口 {}", (int)port) << std::endl;
 
             while (1)
             {
@@ -117,5 +199,5 @@ namespace Debugger
                 std::cout << "关闭与客户端 " << client_ip << " 的连接" << std::endl;
             }
         }
-    } // namespace network
-} // namespace Debugger
+    }; // namespace network
+}; // namespace Debugger
