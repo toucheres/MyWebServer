@@ -18,9 +18,12 @@
 #include <array>
 #include <cstdarg>
 #include <cstdlib>
+#include <deque>
 #include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 int each_process(uint16_t port)
 {
@@ -349,6 +352,10 @@ struct testclass
 {
     int age;
     std::string name;
+    bool operator<(const testclass& other) const
+    {
+        return age < other.age;
+    }
 };
 int main()
 {
@@ -374,16 +381,40 @@ int main()
     //         }
     //         std::cout << "quit\n";
     //     });
-    std::cout << json::from<std::array<testclass, 2>>(json::to<std::array<testclass, 2>>(json::from(
+    // 测试新增的容器类型
+    std::cout << "=== 测试新增容器类型 ===" << '\n';
+
+    // 测试 deque
+    std::cout << "测试 deque:" << '\n';
+    std::cout << json::from(json::to<std::deque<testclass>>(json::from(
+                     std::deque<testclass>{testclass{12, "tom"}, testclass{18, "lucy"}})))
+              << '\n';
+
+    // 测试 multiset
+    std::cout << "测试 multiset:" << '\n';
+    std::cout << json::from(json::to<std::multiset<testclass>>(
+                     json::from(std::multiset<testclass>{{12, "tom"}, {18, "lucy"}, {12, "bob"}})))
+              << '\n';
+
+    // 测试 unordered_set
+    std::cout << "测试 unordered_set:" << '\n';
+    std::cout << json::from(json::to<std::unordered_set<int>>(
+                     json::from(std::unordered_set<int>{1, 2, 3, 4, 5})))
+              << '\n';
+
+    std::cout << "=== 原有测试 ===" << '\n';
+    std::cout << json::from(json::to<std::array<testclass, 2>>(json::from(
                      std::array<testclass, 2>{testclass{12, "tom"}, testclass{18, "lucy"}})))
               << '\n';
-    std::cout << json::from<std::vector<testclass>>(json::to<std::vector<testclass>>(json::from(
+    std::cout << json::from(json::to<std::vector<testclass>>(json::from(
                      std::vector<testclass>{testclass{12, "tom"}, testclass{18, "lucy"}})))
               << '\n';
-    std::cout << json::from<std::map<std::string, testclass>>(
-                     json::to<std::map<std::string, testclass>>(
-                         json::from(std::map<std::string, testclass>{{"str1", {12, "tom"}},
-                                                                     {"str2", {18, "lucy"}}})))
+    std::cout << json::from(json::to<std::map<std::string, testclass>>(
+                     json::from(std::map<std::string, testclass>{{"str1", {12, "tom"}},
+                                                                 {"str2", {18, "lucy"}}})))
+              << '\n';
+    std::cout << json::from(json::to<std::set<testclass>>(
+                     json::from(std::set<testclass>{{12, "tom"}, {18, "lucy"}})))
               << '\n';
     // tp.enqueue(
     //     []()

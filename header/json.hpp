@@ -2,8 +2,11 @@
 #include "reflection_ylt.hpp"
 #include <array>
 #include <charconv>
+#include <deque>
 #include <list>
 #include <map>
+#include <set>
+#include <unordered_set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -25,6 +28,15 @@ template <typename T> struct is_list : std::false_type
 };
 
 template <typename T, typename Alloc> struct is_list<std::list<T, Alloc>> : std::true_type
+{
+};
+
+// 添加双端队列类型检测
+template <typename T> struct is_deque : std::false_type
+{
+};
+
+template <typename T, typename Alloc> struct is_deque<std::deque<T, Alloc>> : std::true_type
 {
 };
 
@@ -51,22 +63,68 @@ template <typename T, std::size_t N> struct is_array<std::array<T, N>> : std::tr
 {
 };
 
+// 修改set类型检测 - 只检测普通set
+template <typename T> struct is_set : std::false_type
+{
+};
+
+template <typename T, typename Compare, typename Alloc>
+struct is_set<std::set<T, Compare, Alloc>> : std::true_type
+{
+};
+
+// 添加多重集合类型检测
+template <typename T> struct is_multiset : std::false_type
+{
+};
+
+template <typename T, typename Compare, typename Alloc>
+struct is_multiset<std::multiset<T, Compare, Alloc>> : std::true_type
+{
+};
+
+// 修改无序集合类型检测 - 只检测unordered_set
+template <typename T> struct is_unordered_set : std::false_type
+{
+};
+
+template <typename T, typename Hash, typename Equal, typename Alloc>
+struct is_unordered_set<std::unordered_set<T, Hash, Equal, Alloc>> : std::true_type
+{
+};
+
 template <typename T> static constexpr bool is_vector_v = is_vector<T>::value;
 
 template <typename T> static constexpr bool is_list_v = is_list<T>::value;
+
+template <typename T> static constexpr bool is_deque_v = is_deque<T>::value;
 
 template <typename T> static constexpr bool is_map_v = is_map<T>::value;
 
 template <typename T> static constexpr bool is_array_v = is_array<T>::value;
 
+template <typename T> static constexpr bool is_set_v = is_set<T>::value;
+
+template <typename T> static constexpr bool is_multiset_v = is_multiset<T>::value;
+
+template <typename T> static constexpr bool is_unordered_set_v = is_unordered_set<T>::value;
+
+// 更新容器分类
 template <typename T>
-static constexpr bool is_container_v =
-    is_vector_v<T> || is_list_v<T> || is_map_v<T> || is_array_v<T>;
+static constexpr bool is_sequence_container_v = 
+    is_vector_v<T> || is_list_v<T> || is_array_v<T> || is_deque_v<T>;
+
+template <typename T>
+static constexpr bool is_set_like_v = 
+    is_set_v<T> || is_multiset_v<T> || is_unordered_set_v<T>;
+
+template <typename T>
+static constexpr bool is_container_v = is_sequence_container_v<T> || is_set_like_v<T> || is_map_v<T>;
 
 // concept声明移到全局作用域
 template <typename T>
 concept reflectable =
-    Aggregate<T> || is_list_v<T> || is_vector_v<T> || is_map_v<T> || is_array_v<T>;
+    Aggregate<T> || is_container_v<T>;
 
 class json
 {
@@ -160,9 +218,9 @@ class json
         }
     }
 
-    // 添加容器类型的构造函数
+    // 修改容器类型的构造函数
     template <typename T>
-        requires(is_vector_v<T> || is_list_v<T> || is_array_v<T>)
+        requires(is_sequence_container_v<T> || is_set_like_v<T>)
     json(T in, options opts = {}, bool = true) // 移除参数名避免警告
     {
         content = serialize_array(in, opts);
@@ -204,10 +262,9 @@ class json
                 {
                     add_string(get_member_names<M>()[index], std::to_string(arg));
                 }
-                else if constexpr (is_vector_v<ArgType> || is_list_v<ArgType> ||
-                                   is_array_v<ArgType>)
+                else if constexpr (is_sequence_container_v<ArgType> || is_set_like_v<ArgType>)
                 {
-                    // 处理vector、list和array
+                    // 处理所有序列容器和集合类容器
                     std::string array_content = serialize_array(arg, opts);
                     add_array(get_member_names<M>()[index], array_content);
                 }
@@ -264,7 +321,7 @@ class json
             }
             else if constexpr (is_container_v<ItemType>)
             {
-                if constexpr (is_vector_v<ItemType> || is_list_v<ItemType> || is_array_v<ItemType>)
+                if constexpr (is_sequence_container_v<ItemType> || is_set_like_v<ItemType>)
                 {
                     result += serialize_array(item, opts);
                 }
@@ -325,7 +382,7 @@ class json
             }
             else if constexpr (is_container_v<ValueType>)
             {
-                if constexpr (is_vector_v<ValueType> || is_list_v<ValueType>)
+                if constexpr (is_sequence_container_v<ValueType> || is_set_like_v<ValueType>)
                 {
                     result += serialize_array(value, opts);
                 }
@@ -718,7 +775,88 @@ class json
         return false;
     }
 
-    // 聚合类型的反序列化 - 优先级最低
+    // 重新组织 from_json 函数重载，避免歧义
+    
+    // 1. std::array 特化 - 最高优先级
+    template <typename T>
+        requires is_array_v<T>
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    template <typename T>
+        requires is_array_v<T>
+    static T from_json(std::string_view json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    // 2. map 容器 - 第二优先级
+    template <typename T>
+        requires is_map_v<T>
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return from_json<T>(std::string_view(json_str), opts);
+    }
+
+    template <typename T>
+        requires is_map_v<T>
+    static T from_json(std::string_view json_str, options opts = defultOpt)
+    {
+        T result;
+        parser p(json_str);
+        auto parsed_data = p.parse();
+
+        for (const auto& [key, val] : parsed_data)
+        {
+            using KeyType = typename T::key_type;
+            using ValueType = typename T::mapped_type;
+
+            KeyType parsed_key{};
+            ValueType parsed_value{};
+
+            if (try_parse_value(key, parsed_key) &&
+                try_parse_container_item(val, parsed_value, opts))
+            {
+                result[parsed_key] = parsed_value;
+            }
+        }
+
+        return result;
+    }
+
+    // 3. 序列容器（除了array） - 第三优先级
+    template <typename T>
+        requires(is_sequence_container_v<T> && !is_array_v<T>)
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    template <typename T>
+        requires(is_sequence_container_v<T> && !is_array_v<T>)
+    static T from_json(std::string_view json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    // 4. 集合类容器 - 第四优先级
+    template <typename T>
+        requires is_set_like_v<T>
+    static T from_json(const std::string& json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    template <typename T>
+        requires is_set_like_v<T>
+    static T from_json(std::string_view json_str, options opts = defultOpt)
+    {
+        return parse_array_to_container<T>(json_str, opts);
+    }
+
+    // 5. 聚合类型的反序列化 - 最低优先级
     template <MeaningfulAggregate T>
         requires(!is_container_v<T>)
     static T from_json(const std::string& json_str, options opts = defultOpt)
@@ -765,10 +903,9 @@ class json
                             value = value.substr(1, value.size() - 2);
                         member = std::stoi(value);
                     }
-                    else if constexpr (is_vector_v<MemberType> || is_list_v<MemberType> ||
-                                       is_array_v<MemberType>)
+                    else if constexpr (is_sequence_container_v<MemberType> || is_set_like_v<MemberType>)
                     {
-                        // 处理数组容器（包括std::array）
+                        // 处理所有序列容器和集合类容器
                         member = parse_array_to_container<MemberType>(value, opts);
                     }
                     else if constexpr (is_map_v<MemberType>)
@@ -839,70 +976,6 @@ class json
         return result;
     }
 
-    // std::array 特化 - 最高优先级
-    template <typename T>
-        requires is_array_v<T>
-    static T from_json(const std::string& json_str, options opts = defultOpt)
-    {
-        return parse_array_to_container<T>(json_str, opts);
-    }
-
-    template <typename T>
-        requires is_array_v<T>
-    static T from_json(std::string_view json_str, options opts = defultOpt)
-    {
-        return parse_array_to_container<T>(json_str, opts);
-    }
-
-    // vector/list 容器 - 高优先级
-    template <typename T>
-        requires(is_vector_v<T> || is_list_v<T>)
-    static T from_json(const std::string& json_str, options opts = defultOpt)
-    {
-        return parse_array_to_container<T>(json_str, opts);
-    }
-
-    template <typename T>
-        requires(is_vector_v<T> || is_list_v<T>)
-    static T from_json(std::string_view json_str, options opts = defultOpt)
-    {
-        return parse_array_to_container<T>(json_str, opts);
-    }
-
-    // map 容器 - 高优先级
-    template <typename T>
-        requires is_map_v<T>
-    static T from_json(const std::string& json_str, options opts = defultOpt)
-    {
-        return from_json<T>(std::string_view(json_str), opts);
-    }
-
-    template <typename T>
-        requires is_map_v<T>
-    static T from_json(std::string_view json_str, options opts = defultOpt)
-    {
-        T result;
-        parser p(json_str);
-        auto parsed_data = p.parse();
-
-        for (const auto& [key, val] : parsed_data)
-        {
-            using KeyType = typename T::key_type;
-            using ValueType = typename T::mapped_type;
-
-            KeyType parsed_key{};
-            ValueType parsed_value{};
-
-            if (try_parse_value(key, parsed_key) &&
-                try_parse_container_item(val, parsed_value, opts))
-            {
-                result[parsed_key] = parsed_value;
-            }
-        }
-
-        return result;
-    }
-
     // 解析数组内容到容器
     template <typename Container>
     static Container parse_array_to_container(std::string_view array_str, options opts = defultOpt)
@@ -969,6 +1042,11 @@ class json
                                     result[item_index] = std::move(item);
                                 }
                             }
+                            else if constexpr (is_set_like_v<Container>)
+                            {
+                                // 对于所有集合类型，使用insert
+                                result.insert(std::move(item));
+                            }
                         }
                     }
                     current_item.clear();
@@ -1008,6 +1086,11 @@ class json
                         {
                             result[item_index] = std::move(item);
                         }
+                    }
+                    else if constexpr (is_set_like_v<Container>)
+                    {
+                        // 对于所有集合类型，使用insert
+                        result.insert(std::move(item));
                     }
                 }
             }
