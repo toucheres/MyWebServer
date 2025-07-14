@@ -1,11 +1,11 @@
 #pragma once
-#include <ylt/reflection/member_value.hpp>
-#include <ylt/struct_pack/reflection.hpp>
 #include <array>
 #include <functional>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <ylt/reflection/member_value.hpp>
+#include <ylt/struct_pack/reflection.hpp>
 
 // 函数特性提取工具 - 与原版保持一致
 namespace function_traits_detail
@@ -73,7 +73,7 @@ namespace function_traits_detail
         return call_with_first_n_args_impl(std::forward<F>(f), std::forward<Tuple>(t),
                                            std::make_index_sequence<valid_args>{});
     }
-}
+} // namespace function_traits_detail
 
 template <typename T> using function_traits = function_traits_detail::function_traits<T>;
 
@@ -123,7 +123,7 @@ namespace callable_reflection
     {
         static constexpr std::size_t value = function_traits<F>::arity;
     };
-}
+} // namespace callable_reflection
 
 // 使用YLT的反射功能重新实现核心概念
 class AnyType
@@ -187,25 +187,25 @@ constexpr void visit_each_member(auto&& bevisited, auto&& visitor)
     }
 {
     using T = std::decay_t<decltype(bevisited)>;
-    
+
     // 创建一个包装器，将YLT的多参数访问转换为单个成员的访问
-    auto wrapper_visitor = [&visitor]<std::size_t I>(auto&& member) {
-        visitor.template operator()<T, I>(member);
-    };
-    
+    [[maybe_unused]] auto wrapper_visitor = [&visitor]<std::size_t I>(auto&& member)
+    { visitor.template operator()<T, I>(member); };
+
     // 使用YLT的for_each来遍历每个成员
     constexpr auto count = num_of_number_v<T>;
-    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-        auto visit_single = [&]<std::size_t Index>(auto&& member) {
-            visitor.template operator()<T, Index>(member);
-        };
-        
+    [&]<std::size_t... Is>(std::index_sequence<Is...>)
+    {
+        [[maybe_unused]] auto visit_single = [&]<std::size_t Index>(auto&& member)
+        { visitor.template operator()<T, Index>(member); };
+
         // 创建一个lambda来处理YLT的tuple_view访问
-        auto tuple_visitor = [&](auto&&... members) {
+        auto tuple_visitor = [&](auto&&... members)
+        {
             std::size_t index = 0;
             ((visitor.template operator()<T, Is>(members), ++index), ...);
         };
-        
+
         // 使用YLT的visit_members，但需要适配参数传递方式
         struct_pack::detail::visit_members(bevisited, tuple_visitor);
     }(std::make_index_sequence<count>{});
@@ -225,7 +225,7 @@ inline consteval std::array<std::string_view, num_of_number_v<T>> get_member_nam
 }
 
 template <Aggregate T, int index>
-    requires (index < num_of_number_v<T>)
+    requires(index < num_of_number_v<T>)
 inline consteval std::string_view get_member_name()
 {
     // 使用YLT的name_of功能获取指定索引的成员名称
@@ -235,14 +235,13 @@ inline consteval std::string_view get_member_name()
 // 基于YLT实现偏移量计算 - 使用标准offsetof方法
 template <Aggregate T, int index>
 constexpr long long bias_member()
-    requires (index < num_of_number_v<T>)
+    requires(index < num_of_number_v<T>)
 {
     // YLT可能不直接提供偏移量，使用基本实现
     return 0; // 占位符实现
 }
 
-template <Aggregate T, int index> 
-constexpr bool index_in_range_v = (num_of_number_v<T> > index);
+template <Aggregate T, int index> constexpr bool index_in_range_v = (num_of_number_v<T> > index);
 
 // 基于YLT实现类型信息 - 使用YLT的类型名称功能
 template <class T> consteval auto get_class_name()
@@ -255,13 +254,16 @@ template <class T> consteval auto get_member_class_names()
 {
     constexpr auto count = num_of_number_v<T>;
     std::array<std::string_view, count> names{};
-    
+
     // 使用YLT的反射功能获取每个成员的类型名称
-    [&]<std::size_t... I>(std::index_sequence<I...>) {
+    [&]<std::size_t... I>(std::index_sequence<I...>)
+    {
         constexpr auto tuple_types = ylt::reflection::struct_to_tuple<T>();
-        ((names[I] = ylt::reflection::get_struct_name<std::tuple_element_t<I, decltype(tuple_types)>>()), ...);
+        ((names[I] =
+              ylt::reflection::get_struct_name<std::tuple_element_t<I, decltype(tuple_types)>>()),
+         ...);
     }(std::make_index_sequence<count>{});
-    
+
     return names;
 }
 
@@ -269,12 +271,13 @@ template <class T> consteval auto get_member_classname_name_pairs()
 {
     constexpr auto count = num_of_number_v<T>;
     std::array<std::pair<std::string_view, std::string_view>, count> pairs{};
-    
+
     // 获取成员名称和类型名称的配对
     constexpr auto member_names = get_member_names<T>();
     constexpr auto type_names = get_member_class_names<T>();
-    
-    for (int i = 0; i < count; ++i) {
+
+    for (int i = 0; i < count; ++i)
+    {
         pairs[i] = std::pair{type_names[i], member_names[i]};
     }
     return pairs;
@@ -283,16 +286,20 @@ template <class T> consteval auto get_member_classname_name_pairs()
 // 内嵌成员数量计算 - 简化实现
 template <class Type> consteval int num_of_number_with_inner()
 {
-    if constexpr (!Aggregate<Type>) {
+    if constexpr (!Aggregate<Type>)
+    {
         return 1;
-    } else if constexpr (MeaningfulAggregate<Type>) {
+    }
+    else if constexpr (MeaningfulAggregate<Type>)
+    {
         // YLT可能没有嵌套计数，使用基本计数
         return num_of_number_v<Type>;
     }
     return 1;
 }
 
-template <typename T> inline constexpr int num_of_number_with_inner_v = num_of_number_with_inner<T>();
+template <typename T>
+inline constexpr int num_of_number_with_inner_v = num_of_number_with_inner<T>();
 
 // 函数名获取模板 - 简化实现
 template <auto fun> class get_fun_name
@@ -367,17 +374,24 @@ template <class... Types> class typeVector
     {
         template <int index> constexpr static auto helperfun()
         {
-            if constexpr (index >= sizeof...(Types)) {
+            if constexpr (index >= sizeof...(Types))
+            {
                 return -1;
-            } else {
+            }
+            else
+            {
                 using CurrentType = getType<index>;
-                if constexpr (is_same_all_v<CurrentType, T>) {
+                if constexpr (is_same_all_v<CurrentType, T>)
+                {
                     return index;
-                } else {
+                }
+                else
+                {
                     return helperfun<index + 1>();
                 }
             }
         };
+
       public:
         constexpr static int value = helperfun<0>();
     };
@@ -387,17 +401,24 @@ template <class... Types> class typeVector
     {
         template <int index> constexpr static auto helperfun()
         {
-            if constexpr (index < 0) {
+            if constexpr (index < 0)
+            {
                 return -1;
-            } else {
+            }
+            else
+            {
                 using CurrentType = getType<index>;
-                if constexpr (is_same_all_v<CurrentType, T>) {
+                if constexpr (is_same_all_v<CurrentType, T>)
+                {
                     return index;
-                } else {
+                }
+                else
+                {
                     return helperfun<index - 1>();
                 }
             }
         };
+
       public:
         constexpr static int value = helperfun<sizeof...(Types) - 1>();
     };
@@ -446,6 +467,7 @@ class get_args_type_t<F, Index>
   private:
     using args_tuple = std::tuple<Args...>;
     static_assert(Index < sizeof...(Args), "Parameter index out of range");
+
   public:
     using type = std::tuple_element_t<Index, args_tuple>;
 };
@@ -456,6 +478,7 @@ class get_args_type_t<F, Index>
   private:
     using args_tuple = std::tuple<Args...>;
     static_assert(Index < sizeof...(Args), "Parameter index out of range");
+
   public:
     using type = std::tuple_element_t<Index, args_tuple>;
 };
@@ -466,6 +489,7 @@ class get_args_type_t<F, Index>
   private:
     using args_tuple = std::tuple<Args...>;
     static_assert(Index < sizeof...(Args), "Parameter index out of range");
+
   public:
     using type = std::tuple_element_t<Index, args_tuple>;
 };
@@ -476,6 +500,7 @@ class get_args_type_t<F, Index>
   private:
     using args_tuple = std::tuple<Args...>;
     static_assert(Index < sizeof...(Args), "Parameter index out of range");
+
   public:
     using type = std::tuple_element_t<Index, args_tuple>;
 };
@@ -521,7 +546,8 @@ template <typename F> struct get_args_count_type
 };
 
 template <auto F> inline constexpr size_t get_args_count = get_args_count_t<F>::value;
-template <typename F> inline constexpr std::size_t get_args_count_type_v = get_args_count_type<F>::value;
+template <typename F>
+inline constexpr std::size_t get_args_count_type_v = get_args_count_type<F>::value;
 
 // 便利接口
 template <typename F> constexpr std::size_t get_args_nums(F&& f)
@@ -540,11 +566,15 @@ inline constexpr bool is_member_function_v =
 template <typename F, typename... Args>
 inline constexpr bool can_be_called_with = []()
 {
-    if constexpr (sizeof...(Args) != callable_reflection::get_args_nums(std::declval<F>())) {
+    if constexpr (sizeof...(Args) != callable_reflection::get_args_nums(std::declval<F>()))
+    {
         return false;
-    } else {
+    }
+    else
+    {
         using FArgs = callable_reflection::args_tuple_t<F>;
-        return []<std::size_t... I>(std::index_sequence<I...>) {
+        return []<std::size_t... I>(std::index_sequence<I...>)
+        {
             return (std::is_convertible_v<Args, std::tuple_element_t<I, FArgs>> && ...);
         }(std::make_index_sequence<sizeof...(Args)>{});
     }
@@ -553,30 +583,42 @@ inline constexpr bool can_be_called_with = []()
 // 参数类型推导
 template <class... args> auto constexpr get_args_types__(auto&& callable)
 {
-    if constexpr (requires { callable(std::declval<args>()...); }) {
+    if constexpr (requires { callable(std::declval<args>()...); })
+    {
         return get_args_types__<args..., AnyType>(callable);
-    } else {
+    }
+    else
+    {
         return typeVector<std::remove_cvref_t<args>...>{};
     }
 }
 
 template <class callable> decltype(auto) constexpr get_args_types_()
 {
-    if constexpr (requires { &std::remove_reference_t<callable>::operator(); }) {
+    if constexpr (requires { &std::remove_reference_t<callable>::operator(); })
+    {
         using lambda_type = decltype(&std::remove_reference_t<callable>::operator());
         using args_tuple = typename function_traits<lambda_type>::args_tuple;
-        return []<std::size_t... I>(std::index_sequence<I...>) {
+        return []<std::size_t... I>(std::index_sequence<I...>)
+        {
             return typeVector<std::tuple_element_t<I, args_tuple>...>{};
         }(std::make_index_sequence<std::tuple_size_v<args_tuple>>{});
-    } else if constexpr (requires { std::declval<callable>()(); }) {
+    }
+    else if constexpr (requires { std::declval<callable>()(); })
+    {
         return get_args_types__<AnyType>(std::declval<callable>());
-    } else if constexpr (std::is_function_v<std::remove_pointer_t<callable>> ||
-                       std::is_member_function_pointer_v<callable>) {
+    }
+    else if constexpr (std::is_function_v<std::remove_pointer_t<callable>> ||
+                       std::is_member_function_pointer_v<callable>)
+    {
         using args_tuple = typename function_traits<callable>::args_tuple;
-        return []<std::size_t... I>(std::index_sequence<I...>) {
+        return []<std::size_t... I>(std::index_sequence<I...>)
+        {
             return typeVector<std::tuple_element_t<I, args_tuple>...>{};
         }(std::make_index_sequence<std::tuple_size_v<args_tuple>>{});
-    } else {
+    }
+    else
+    {
         return typeVector<>{};
     }
 }

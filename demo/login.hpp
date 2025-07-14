@@ -114,7 +114,8 @@ inline auto deregistration(const std::string& username, const std::string& passw
 {
     static auto sqlconnection = MySQLHandle("localhost", "webserver", "WebServer@2025", "chat_db");
     auto users_connecion = enable_sql<users>(sqlconnection);
-    auto ret = users_connecion.select_where(std::format("username = '{}'", username));
+    auto ret = users_connecion.select_where(
+        std::format("username = '{}' and password = '{}'", username, password));
     if (ret.size())
     {
         users_connecion.remove(std::format("username = '{}'", username));

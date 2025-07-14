@@ -101,7 +101,7 @@ class printer
 
 namespace Debugger
 {
-    inline static printer print;
+    [[maybe_unused]] inline static printer print;
     class network
     {
       public:

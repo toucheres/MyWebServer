@@ -388,7 +388,7 @@ HttpClient::HttpClient(HttpClient&& move)
 }
 
 HttpClient::HttpClient(const HttpClient& copy)
-    : con(copy.con), targetport(copy.targetport), targetip(copy.targetip)
+    : targetport(copy.targetport), targetip(copy.targetip), con(copy.con)
 {
     // 注意：复制构造函数不能复制协程和socket，需要重新创建连接
     if (targetport != (port)-1 && !targetip.empty())

@@ -146,7 +146,7 @@ WebSocketFrame WebSocketFrame::deserialize(const std::vector<uint8_t>& data, siz
 
 // WebSocketClient 实现
 WebSocketClient::WebSocketClient(const std::string& ip, port port, const std::string& path)
-    : target_ip(ip), target_port(port), target_path(path), 
+    : target_port(port), target_ip(ip), target_path(path), 
       coru(WebSocketClientUtil::webSocketEventloop(this)),
       client_socket(SocketFile::createTcpClient(port, ip))
 {
