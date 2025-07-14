@@ -6,6 +6,9 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <random>
 
 // 初始化静态成员，自动注册HTTP协议处理函数
 bool HttpServerUtil::autoRegistered = HttpServerUtil::initialize();
@@ -762,8 +765,6 @@ bool HttpServerUtil::setReuseAddr(int fd)
     return true;
 }
 
-// ...existing code...
-
 // 新增：客户端连接相关方法实现
 int HttpServerUtil::createClientSocket()
 {
@@ -951,4 +952,151 @@ int HttpServerUtil::connectToServer(const std::string& host, uint16_t port, int 
 
     platform::closeSocket(client_fd);
     return static_cast<int>(INVALID_SOCKET_VALUE);
+}
+
+// 新增：WebSocket相关工具函数实现
+std::string HttpServerUtil::generateWebSocketKey()
+{
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 255);
+    
+    std::vector<uint8_t> key_bytes(16);
+    for (auto& byte : key_bytes)
+    {
+        byte = dis(gen);
+    }
+    
+    // Base64编码
+    std::string base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string result;
+    int val = 0, valb = -6;
+    
+    for (uint8_t c : key_bytes)
+    {
+        val = (val << 8) + c;
+        valb += 8;
+        while (valb >= 0)
+        {
+            result.push_back(base64_chars[(val >> valb) & 0x3F]);
+            valb -= 6;
+        }
+    }
+    
+    if (valb > -6)
+    {
+        result.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
+    }
+    
+    while (result.size() % 4)
+    {
+        result.push_back('=');
+    }
+    
+    return result;
+}
+
+std::string HttpServerUtil::calculateWebSocketAccept(const std::string& key)
+{
+    std::string magic_string = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    std::string combined = key + magic_string;
+    
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1(reinterpret_cast<const unsigned char*>(combined.c_str()), combined.length(), hash);
+    
+    // Base64编码SHA1哈希
+    std::string base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string result;
+    int val = 0, valb = -6;
+    
+    for (int i = 0; i < SHA_DIGEST_LENGTH; ++i)
+    {
+        val = (val << 8) + hash[i];
+        valb += 8;
+        while (valb >= 0)
+        {
+            result.push_back(base64_chars[(val >> valb) & 0x3F]);
+            valb -= 6;
+        }
+    }
+    
+    if (valb > -6)
+    {
+        result.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
+    }
+    
+    while (result.size() % 4)
+    {
+        result.push_back('=');
+    }
+    
+    return result;
+}
+
+bool HttpServerUtil::isWebSocketUpgradeRequest(const std::map<std::string, std::string>& headers)
+{
+    auto upgrade_it = headers.find("upgrade");
+    auto connection_it = headers.find("connection");
+    auto key_it = headers.find("sec-websocket-key");
+    auto version_it = headers.find("sec-websocket-version");
+    
+    if (upgrade_it != headers.end() && connection_it != headers.end() && 
+        key_it != headers.end() && version_it != headers.end())
+    {
+        std::string upgrade_value = upgrade_it->second;
+        std::string connection_value = connection_it->second;
+        
+        std::transform(upgrade_value.begin(), upgrade_value.end(), upgrade_value.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+        std::transform(connection_value.begin(), connection_value.end(), connection_value.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+        
+        return upgrade_value.find("websocket") != std::string::npos &&
+               connection_value.find("upgrade") != std::string::npos &&
+               version_it->second == "13";
+    }
+    
+    return false;
+}
+
+std::string HttpServerUtil::createWebSocketUpgradeResponse(const std::string& sec_websocket_key, 
+                                                          const std::map<std::string, std::string>& additional_headers)
+{
+    std::ostringstream response;
+    response << "HTTP/1.1 101 Switching Protocols\r\n";
+    response << "Upgrade: websocket\r\n";
+    response << "Connection: Upgrade\r\n";
+    response << "Sec-WebSocket-Accept: " << calculateWebSocketAccept(sec_websocket_key) << "\r\n";
+    
+    // 添加额外的头部
+    for (const auto& header : additional_headers)
+    {
+        response << header.first << ": " << header.second << "\r\n";
+    }
+    
+    response << "\r\n";
+    return response.str();
+}
+
+uint32_t HttpServerUtil::generateMaskKey()
+{
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint32_t> dis;
+    return dis(gen);
+}
+
+void HttpServerUtil::maskWebSocketData(std::vector<uint8_t>& data, uint32_t mask)
+{
+    uint8_t mask_bytes[4] = {
+        static_cast<uint8_t>(mask >> 24),
+        static_cast<uint8_t>((mask >> 16) & 0xFF),
+        static_cast<uint8_t>((mask >> 8) & 0xFF),
+        static_cast<uint8_t>(mask & 0xFF)
+    };
+    
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        data[i] ^= mask_bytes[i % 4];
+    }
 }

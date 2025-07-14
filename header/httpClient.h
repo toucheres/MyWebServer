@@ -105,6 +105,7 @@ class HttpRequst
     std::string formDataToString(const std::map<std::string, std::string>& form_data) const;
 };
 class HttpClientUtil;
+class WebSocketClient; // 前向声明
 class HttpClient : co_async
 {
     friend HttpClientUtil;
@@ -171,10 +172,16 @@ class HttpClient : co_async
         // keep-alive相关
         static constexpr const char* keep_alive = "keep_alive";
     };
+
+    // 新增：WebSocket升级相关方法
+    bool upgradeToWebSocket(const std::string& path = "/",
+                           const std::map<std::string, std::string>& headers = {});
+    std::unique_ptr<WebSocketClient> createWebSocketClient(const std::string& path = "/");
+    bool isWebSocketUpgradeResponse() const;
 };
 class HttpClientUtil
 {
   public:
-    static Task<void, void> eventloop(HttpClient* self);
+    static Task<void, void> httpEventloop(HttpClient* self);
     SocketFile createTcpClient(port port, std::string ip);
 };

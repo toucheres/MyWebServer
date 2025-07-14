@@ -1,11 +1,12 @@
 #include "corutine.hpp"
 #include "file.h"
 #include "httpClient.h"
-#include "httpServerFile.h" // 复用一些工具函数
+#include "httpServerFile.h"
+#include "webSocketClient.h" // 新增包含
 #include <algorithm>
 #include <sstream>
 
-Task<void, void> HttpClientUtil::eventloop(HttpClient* self)
+Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
 {
     while (true) // 外层循环用于处理多个请求
     {
@@ -366,13 +367,13 @@ std::map<std::string, std::string>& HttpClient::getContent()
 }
 
 HttpClient::HttpClient(SocketFile&& sok)
-    : coru(HttpClientUtil::eventloop(this)), cilent_socket(std::move(sok))
+    : coru(HttpClientUtil::httpEventloop(this)), cilent_socket(std::move(sok))
 {
 }
 
 // 补全缺失的构造函数和方法实现
 HttpClient::HttpClient(port target, std::string ip)
-    : targetport(target), targetip(std::move(ip)), coru(HttpClientUtil::eventloop(this)),
+    : targetport(target), targetip(std::move(ip)), coru(HttpClientUtil::httpEventloop(this)),
       cilent_socket(SocketFile::createTcpClient(targetport, targetip))
 {
 }
@@ -394,7 +395,7 @@ HttpClient::HttpClient(const HttpClient& copy)
     {
         cilent_socket = SocketFile::createTcpClient(targetport, targetip);
 
-        coru = HttpClientUtil::eventloop(this);
+        coru = HttpClientUtil::httpEventloop(this);
     }
     // callback 不复制，因为它可能包含对原对象的引用
 }
@@ -660,4 +661,67 @@ bool HttpClient::isKeepAlive() const
 void HttpClient::setNextCallback(std::function<void(HttpClient& self)>&& next_callback)
 {
     this->callback = std::move(next_callback);
+}
+
+// 新增：WebSocket升级相关方法实现
+bool HttpClient::upgradeToWebSocket(const std::string& path, 
+                                   const std::map<std::string, std::string>& headers)
+{
+    if (cilent_socket.getSocketStatus() != SocketStatus::OK)
+    {
+        return false;
+    }
+
+    // 创建WebSocket升级请求
+    HttpRequst upgrade_request = HttpRequst::GET(path);
+    upgrade_request.addHeader("Upgrade", "websocket");
+    upgrade_request.addHeader("Connection", "Upgrade");
+    upgrade_request.addHeader("Sec-WebSocket-Key", WebSocketClientUtil::generateWebSocketKey());
+    upgrade_request.addHeader("Sec-WebSocket-Version", "13");
+    
+    // 添加自定义头部
+    for (const auto& header : headers)
+    {
+        upgrade_request.addHeader(header.first, header.second);
+    }
+    
+    return sendRequest(upgrade_request);
+}
+
+std::unique_ptr<WebSocketClient> HttpClient::createWebSocketClient(const std::string& path)
+{
+    if (cilent_socket.getSocketStatus() != SocketStatus::OK)
+    {
+        return nullptr;
+    }
+    
+    // 将当前的socket移交给WebSocket客户端
+    SocketFile socket_copy = std::move(cilent_socket);
+    return std::make_unique<WebSocketClient>(std::move(socket_copy), path);
+}
+
+bool HttpClient::isWebSocketUpgradeResponse() const
+{
+    auto status_it = con.find(HttpClient::CilentKey::status_code);
+    if (status_it != con.end() && status_it->second == "101")
+    {
+        auto upgrade_it = con.find("upgrade");
+        auto connection_it = con.find("connection");
+        
+        if (upgrade_it != con.end() && connection_it != con.end())
+        {
+            std::string upgrade_value = upgrade_it->second;
+            std::string connection_value = connection_it->second;
+            
+            std::transform(upgrade_value.begin(), upgrade_value.end(), upgrade_value.begin(),
+                         [](unsigned char c) { return std::tolower(c); });
+            std::transform(connection_value.begin(), connection_value.end(), connection_value.begin(),
+                         [](unsigned char c) { return std::tolower(c); });
+            
+            return upgrade_value.find("websocket") != std::string::npos &&
+                   connection_value.find("upgrade") != std::string::npos;
+        }
+    }
+    
+    return false;
 }

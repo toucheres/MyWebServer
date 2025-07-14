@@ -116,6 +116,15 @@ class HttpServerUtil
     static int connectToServer(const std::string& host, uint16_t port);
     static int connectToServer(const std::string& host, uint16_t port, int timeout_ms);
 
+    // 新增：WebSocket相关的静态方法
+    static std::string generateWebSocketKey();
+    static std::string calculateWebSocketAccept(const std::string& key);
+    static bool isWebSocketUpgradeRequest(const std::map<std::string, std::string>& headers);
+    static std::string createWebSocketUpgradeResponse(const std::string& sec_websocket_key, 
+                                                     const std::map<std::string, std::string>& additional_headers = {});
+    static uint32_t generateMaskKey();
+    static void maskWebSocketData(std::vector<uint8_t>& data, uint32_t mask);
+
     // 禁止实例化
     HttpServerUtil() = delete;
     ~HttpServerUtil() = delete;
