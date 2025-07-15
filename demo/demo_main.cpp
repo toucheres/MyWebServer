@@ -1,29 +1,25 @@
+#include "clientFile.hpp"
 #include "corutine.hpp"
 #include "debug.hpp"
 #include "file.h"
 #include "format.h"
 #include "getmessage.hpp"
 #include "http.h"
-#include "httpClient.h"
+#include "httpClientFile.h"
 #include "httpServerFile.h"
 #include "json.hpp"
-#include "log.hpp"
 #include "login.hpp"
 #include "message.h"
+#include "protocol_constants.h"
 #include "serverFile.h"
-#include "stdiomanager.hpp"
 #include "threadpool.hpp"
 #include "users.h"
-#include "webSocketFile.h"
-#include <array>
+#include "webSocketClientFile.hpp"
+#include "webSocketServerFile.h"
 #include <cstdarg>
 #include <cstdlib>
-#include <deque>
 #include <map>
-#include <set>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 int each_process(uint16_t port)
 {
@@ -105,7 +101,7 @@ int each_process(uint16_t port)
             {
                 if (file.getAgreementType() == Protocol::WebSocket)
                 {
-                    auto mes = file.getContent()[WebSocketUtil::ContentKey::message];
+                    auto mes = file.getContent()[WebSocketServerUtil::ContentKey::message];
                     auto ret =
                         Format("username = %[^,], content = %s", Format::Type::scanf).parse(mes);
                     if (ret)
@@ -125,7 +121,7 @@ int each_process(uint16_t port)
                         }
                     }
                 }
-                else if (WebSocketUtil::tryUpToWs(file))
+                else if (WebSocketServerUtil::tryUpToWs(file))
                 {
                     file.getContent()["inws"] = "ok";
                 }
@@ -339,7 +335,7 @@ int each_process(uint16_t port)
     }
     return 0;
 }
-auto callbackfun(HttpClient& self)
+auto callbackfun(clientFile& self)
 {
     std::cout << "get!: \n";
     for (auto& each : self.getContent())
@@ -359,88 +355,81 @@ struct testclass
 };
 int main()
 {
-    // // 设置日志输出到文件
-    // log::setLogFile("logs/");
-    // // 或者指定具体文件名
-    // // log::setLogFile("logs/server.log");
-    // threadpool tp{6};
-    // // tp.enqueue([]() { each_process(8081); });
-    // // tp.enqueue([]() { each_process(8080); });
+    threadpool tp{6};
     // tp.enqueue([]() { Debugger::network::TcpTest((port)8080); });
-    // tp.enqueue(
-    //     []()
-    //     {
-    //         std::cout << "start client!\n";
-    //         HttpClient client{port(8080), "47.108.187.235"};
-    //         client.setcallback(callbackfun);
-    //         std::cout << "write socket\n";
-    //         client.cilent_socket.writeFile(HttpRequst::GET("/"));
+    // tp.enqueue([]() { each_process(8081); });
+    tp.enqueue(
+        []()
+        {
+            HttpServer server{8081, "127.0.0.1"};
+            server.addCallbackFormat(
+                Format{"/", Format::Type::same},
+                [](serverFile& self)
+                {
+                    if (self.getAgreementType() == Protocol::HTTP)
+                    {
+                        if (WebSocketServerUtil::tryUpToWs(self))
+                        {
+                            std::cout << "server get upws requset, and responsed!\n";
+                        }
+                        else
+                        {
+                            std::cout << "http get: " << '\n';
+                            std::cout
+                                << self.getContent()[HttpResponse::RequestKey::orignal_content]
+                                << '\n';
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "ws server get: " << '\n';
 
-    //         while (client.eventGo() == EventStatus::Continue)
-    //         {
-    //         }
-    //         std::cout << "quit\n";
-    //     });
-    // 测试新增的容器类型
-    std::cout << "=== 测试新增容器类型 ===" << '\n';
-
-    // 测试 deque
-    std::cout << "测试 deque:" << '\n';
-    std::cout << json::from(json::to<std::deque<testclass>>(json::from(
-                     std::deque<testclass>{testclass{12, "tom"}, testclass{18, "lucy"}})))
-              << '\n';
-
-    // 测试 multiset
-    std::cout << "测试 multiset:" << '\n';
-    std::cout << json::from(json::to<std::multiset<testclass>>(
-                     json::from(std::multiset<testclass>{{12, "tom"}, {18, "lucy"}, {12, "bob"}})))
-              << '\n';
-
-    // 测试 unordered_set
-    std::cout << "测试 unordered_set:" << '\n';
-    std::cout << json::from(json::to<std::unordered_set<int>>(
-                     json::from(std::unordered_set<int>{1, 2, 3, 4, 5})))
-              << '\n';
-
-    std::cout << "=== 原有测试 ===" << '\n';
-    std::cout << json::from(json::to<std::array<testclass, 2>>(json::from(
-                     std::array<testclass, 2>{testclass{12, "tom"}, testclass{18, "lucy"}})))
-              << '\n';
-    std::cout << json::from(json::to<std::vector<testclass>>(json::from(
-                     std::vector<testclass>{testclass{12, "tom"}, testclass{18, "lucy"}})))
-              << '\n';
-    std::cout << json::from(json::to<std::map<std::string, testclass>>(
-                     json::from(std::map<std::string, testclass>{{"str1", {12, "tom"}},
-                                                                 {"str2", {18, "lucy"}}})))
-              << '\n';
-    std::cout << json::from(json::to<std::set<testclass>>(
-                     json::from(std::set<testclass>{{12, "tom"}, {18, "lucy"}})))
-              << '\n';
-    // tp.enqueue(
-    //     []()
-    //     {
-    //         // 创建端口转发器：3000 -> 8000
-    //         tcpForwarder forwarder(static_cast<port>(3000), static_cast<port>(8080),
-    // "127.0.0.1",
-    //                                "0.0.0.0");
-    //         // tcpForwarder forwarder(static_cast<port>(3000), static_cast<port>(8080));
-
-    //         // 在事件循环中运行
-    //         while (true)
-    //         {
-    //             forwarder.eventGo();
-    //         }
-    //     });
-    // tp.enqueue(
-    //     [&]()
-    //     {
-    //         stdiolistener iol;
-    //         auto co = Co_Manager{};
-    //         co.add(iol);
-    //         while (1)
-    //         {
-    //             co.go();
-    //         }
-    //     });
+                        std::cout << self.getContent()[WebSocketServerUtil::ContentKey::message]
+                                  << '\n';
+                    }
+                });
+            Co_Manager ma{};
+            ma.add(server);
+            while (1)
+            {
+                ma.go();
+            }
+        });
+    tp.enqueue(
+        []()
+        {
+            std::cout << "start client!\n";
+            clientFile client{port(8081), "127.0.0.1"};
+            std::cout << "write socket\n";
+            client << WebSocketClientUtil::makeWebSocketHandshake();
+            client.setcallback(
+                [](clientFile& self)
+                {
+                    std::cout << "client get reply!\n";
+                    if (self.getAgreementType() == Protocol::HTTP)
+                    {
+                        if (WebSocketClientUtil::shouldbeUpdataToWS(self))
+                        {
+                            self.upgradeProtocol(Protocol::WebSocket);
+                            self << WebSocketMessage::text("ciallo from ws client!\n");
+                            self.setcallback(
+                                [](clientFile& self_ws)
+                                {
+                                    if (self_ws.getAgreementType() == Protocol::WebSocket)
+                                    {
+                                        std::cout << "ws client get:"
+                                                  << self_ws.getContent()
+                                                         [WebSocketClientUtil::ContentKey::message]
+                                                  << '\n';
+                                    }
+                                });
+                        }
+                    }
+                });
+            while (client.eventGo() == EventStatus::Continue)
+            {
+            }
+            std::cout << "quit\n";
+        });
     return 0;
 }

@@ -1,12 +1,18 @@
+#include "httpClientFile.h"
+#include "clientFile.hpp"
 #include "corutine.hpp"
 #include "file.h"
-#include "httpClient.h"
 #include "httpServerFile.h"
-#include "webSocketClient.h" // 新增包含
 #include <algorithm>
 #include <sstream>
-
-Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
+bool HttpClientUtil::autoRegistered = HttpClientUtil::initialize();
+bool HttpClientUtil::initialize()
+{
+    return clientFile ::registerProtocolHandler(
+        Protocol::HTTP,
+        HttpClientUtil::httpEventloop); // 使用 Protocol 枚举
+}
+Task<void, void> HttpClientUtil::httpEventloop(clientFile* self)
 {
     while (true) // 外层循环用于处理多个请求
     {
@@ -27,7 +33,7 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
 
         // 原始内容缓存
         std::string original_content_buffer;
-        
+
         // keep-alive 相关标志
         bool connection_keep_alive = true;
         bool should_close_connection = false;
@@ -70,17 +76,18 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                     size_t first_space = tp.find(' ');
                     size_t second_space = tp.find(' ', first_space + 1);
 
-                    if (first_space != std::string_view::npos && second_space != std::string_view::npos)
+                    if (first_space != std::string_view::npos &&
+                        second_space != std::string_view::npos)
                     {
                         version = std::string(tp.substr(0, first_space));
                         status_code =
                             std::string(tp.substr(first_space + 1, second_space - first_space - 1));
-                        reason_phrase =
-                            std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
+                        reason_phrase = std::string(
+                            tp.substr(second_space + 1, tp.length() - second_space - 3));
 
-                        self->getContent()[HttpClient::CilentKey::version] = version;
-                        self->getContent()[HttpClient::CilentKey::status_code] = status_code;
-                        self->getContent()[HttpClient::CilentKey::reason_phrase] = reason_phrase;
+                        self->getContent()[CilentKey::version] = version;
+                        self->getContent()[CilentKey::status_code] = status_code;
+                        self->getContent()[CilentKey::reason_phrase] = reason_phrase;
 
                         state = HttpServerUtil::ParseState::HEADERS;
                     }
@@ -101,8 +108,8 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                     {
                         std::string conn_value = conn_it->second;
                         std::transform(conn_value.begin(), conn_value.end(), conn_value.begin(),
-                                     [](unsigned char c) { return std::tolower(c); });
-                        
+                                       [](unsigned char c) { return std::tolower(c); });
+
                         if (conn_value.find("close") != std::string::npos)
                         {
                             connection_keep_alive = false;
@@ -113,7 +120,7 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                             connection_keep_alive = true;
                         }
                     }
-                    
+
                     // HTTP/1.0 默认不保持连接，HTTP/1.1 默认保持连接
                     if (version == "HTTP/1.0" && conn_it == self->getContent().end())
                     {
@@ -125,7 +132,7 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                     is_chunked = HttpServerUtil::isChunkedRequest(self->getContent());
 
                     // 检查Content-Length
-                    auto it = self->getContent().find(HttpClient::CilentKey::content_length);
+                    auto it = self->getContent().find(CilentKey::content_length);
                     if (it != self->getContent().end())
                     {
                         try
@@ -150,7 +157,7 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                     {
                         state = HttpServerUtil::ParseState::CHUNKED_SIZE;
                         chunked_body.clear();
-                        self->getContent()[HttpClient::CilentKey::is_chunked] = "true";
+                        self->getContent()[CilentKey::is_chunked] = "true";
                     }
                     else
                     {
@@ -218,7 +225,7 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
 
                     if (body_read >= content_length)
                     {
-                        self->getContent()[HttpClient::CilentKey::body] = body_buffer;
+                        self->getContent()[CilentKey::body] = body_buffer;
                         state = HttpServerUtil::ParseState::COMPLETE;
                     }
                 }
@@ -285,8 +292,8 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                 if (tp == "\r\n")
                 {
                     // 分块传输结束
-                    self->getContent()[HttpClient::CilentKey::body] = chunked_body;
-                    self->getContent()[HttpClient::CilentKey::chunked_complete] = "true";
+                    self->getContent()[CilentKey::body] = chunked_body;
+                    self->getContent()[CilentKey::chunked_complete] = "true";
                     state = HttpServerUtil::ParseState::COMPLETE;
                 }
                 else
@@ -295,7 +302,7 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                     size_t index = tp.find(": ");
                     if (index != std::string_view::npos)
                     {
-                        std::string key = std::string(HttpClient::CilentKey::trailer_prefix) +
+                        std::string key = std::string(CilentKey::trailer_prefix) +
                                           std::string(tp.substr(0, index));
                         std::transform(key.begin(), key.end(), key.begin(),
                                        [](unsigned char c) { return std::tolower(c); });
@@ -314,10 +321,10 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
             case HttpServerUtil::ParseState::COMPLETE:
             {
                 // 将完整的原始内容存储
-                self->getContent()[HttpClient::CilentKey::original_content] = original_content_buffer;
-                
+                self->getContent()[CilentKey::original_content] = original_content_buffer;
+
                 // 设置keep-alive状态
-                self->getContent()[HttpClient::CilentKey::keep_alive] = 
+                self->getContent()[CilentKey::keep_alive] =
                     connection_keep_alive ? "true" : "false";
 
                 // 客户端解析完成，执行回调
@@ -326,8 +333,8 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                     self->callback(*self);
                 }
                 state = HttpServerUtil::ParseState::REQUEST_LINE;
-                    // 判断是否需要关闭连接或继续保持连接
-                    if (should_close_connection || !connection_keep_alive)
+                // 判断是否需要关闭连接或继续保持连接
+                if (should_close_connection || !connection_keep_alive)
                 {
                     // 关闭连接并退出
                     co_return;
@@ -335,15 +342,15 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
                 else
                 {
                     // 保持连接，清理状态准备下一个请求
-                    self->getContent().clear();  // 清理上次请求的数据
-                    break; // 跳出内层循环，开始处理下一个请求
+                    self->getContent().clear(); // 清理上次请求的数据
+                    break;                      // 跳出内层循环，开始处理下一个请求
                 }
             }
             break;
             }
             co_yield {};
         }
-        
+
         // 等待下一个请求或者超时
         // 这里可以添加超时逻辑，如果长时间没有新请求则关闭连接
         co_yield {};
@@ -351,7 +358,7 @@ Task<void, void> HttpClientUtil::httpEventloop(HttpClient* self)
     co_return;
 }
 
-EventStatus HttpClient::eventGo()
+EventStatus clientFile::eventGo()
 {
     cilent_socket.eventGo();
     if (!coru.done())
@@ -361,24 +368,28 @@ EventStatus HttpClient::eventGo()
     }
     return EventStatus::Stop;
 }
-std::map<std::string, std::string>& HttpClient::getContent()
+std::map<std::string, std::string>& clientFile::getContent()
+{
+    return con;
+}
+const std::map<std::string, std::string>& clientFile::getContent() const
 {
     return con;
 }
 
-HttpClient::HttpClient(SocketFile&& sok)
+clientFile::clientFile(SocketFile&& sok)
     : coru(HttpClientUtil::httpEventloop(this)), cilent_socket(std::move(sok))
 {
 }
 
 // 补全缺失的构造函数和方法实现
-HttpClient::HttpClient(port target, std::string ip)
+clientFile::clientFile(port target, std::string ip)
     : targetport(target), targetip(std::move(ip)), coru(HttpClientUtil::httpEventloop(this)),
       cilent_socket(SocketFile::createTcpClient(targetport, targetip))
 {
 }
 
-HttpClient::HttpClient(HttpClient&& move)
+clientFile::clientFile(clientFile&& move)
     : con(std::move(move.con)), coru(std::move(move.coru)),
       cilent_socket(std::move(move.cilent_socket)), callback(std::move(move.callback)),
       targetport(move.targetport), targetip(std::move(move.targetip))
@@ -387,7 +398,7 @@ HttpClient::HttpClient(HttpClient&& move)
     move.targetport = (port)-1;
 }
 
-HttpClient::HttpClient(const HttpClient& copy)
+clientFile::clientFile(const clientFile& copy)
     : targetport(copy.targetport), targetip(copy.targetip), con(copy.con)
 {
     // 注意：复制构造函数不能复制协程和socket，需要重新创建连接
@@ -399,18 +410,7 @@ HttpClient::HttpClient(const HttpClient& copy)
     }
     // callback 不复制，因为它可能包含对原对象的引用
 }
-
-port HttpClient::getport()
-{
-    return targetport;
-}
-
-std::string HttpClient::getip()
-{
-    return targetip;
-}
-
-void HttpClient::setcallback(std::function<void(HttpClient& self)>&& callback)
+void clientFile::setcallback(std::function<void(clientFile& self)>&& callback)
 {
     this->callback = std::move(callback);
 }
@@ -635,93 +635,4 @@ std::string HttpRequst::formDataToString(const std::map<std::string, std::string
     }
 
     return oss.str();
-}
-
-// 添加发送新请求的方法
-bool HttpClient::sendRequest(const HttpRequst& request)
-{
-    if (cilent_socket.getSocketStatus() != SocketStatus::OK)
-    {
-        return false;
-    }
-
-    std::string request_str = request.toString();
-    cilent_socket.writeFile(request_str);
-    return true;
-}
-
-// 检查连接是否支持keep-alive
-bool HttpClient::isKeepAlive() const
-{
-    auto it = con.find(HttpClient::CilentKey::keep_alive);
-    return it != con.end() && it->second == "true";
-}
-
-// 设置新的回调函数用于处理下一个响应
-void HttpClient::setNextCallback(std::function<void(HttpClient& self)>&& next_callback)
-{
-    this->callback = std::move(next_callback);
-}
-
-// 新增：WebSocket升级相关方法实现
-bool HttpClient::upgradeToWebSocket(const std::string& path, 
-                                   const std::map<std::string, std::string>& headers)
-{
-    if (cilent_socket.getSocketStatus() != SocketStatus::OK)
-    {
-        return false;
-    }
-
-    // 创建WebSocket升级请求
-    HttpRequst upgrade_request = HttpRequst::GET(path);
-    upgrade_request.addHeader("Upgrade", "websocket");
-    upgrade_request.addHeader("Connection", "Upgrade");
-    upgrade_request.addHeader("Sec-WebSocket-Key", WebSocketClientUtil::generateWebSocketKey());
-    upgrade_request.addHeader("Sec-WebSocket-Version", "13");
-    
-    // 添加自定义头部
-    for (const auto& header : headers)
-    {
-        upgrade_request.addHeader(header.first, header.second);
-    }
-    
-    return sendRequest(upgrade_request);
-}
-
-std::unique_ptr<WebSocketClient> HttpClient::createWebSocketClient(const std::string& path)
-{
-    if (cilent_socket.getSocketStatus() != SocketStatus::OK)
-    {
-        return nullptr;
-    }
-    
-    // 将当前的socket移交给WebSocket客户端
-    SocketFile socket_copy = std::move(cilent_socket);
-    return std::make_unique<WebSocketClient>(std::move(socket_copy), path);
-}
-
-bool HttpClient::isWebSocketUpgradeResponse() const
-{
-    auto status_it = con.find(HttpClient::CilentKey::status_code);
-    if (status_it != con.end() && status_it->second == "101")
-    {
-        auto upgrade_it = con.find("upgrade");
-        auto connection_it = con.find("connection");
-        
-        if (upgrade_it != con.end() && connection_it != con.end())
-        {
-            std::string upgrade_value = upgrade_it->second;
-            std::string connection_value = connection_it->second;
-            
-            std::transform(upgrade_value.begin(), upgrade_value.end(), upgrade_value.begin(),
-                         [](unsigned char c) { return std::tolower(c); });
-            std::transform(connection_value.begin(), connection_value.end(), connection_value.begin(),
-                         [](unsigned char c) { return std::tolower(c); });
-            
-            return upgrade_value.find("websocket") != std::string::npos &&
-                   connection_value.find("upgrade") != std::string::npos;
-        }
-    }
-    
-    return false;
 }

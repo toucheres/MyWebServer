@@ -1,11 +1,9 @@
 #pragma once
+#include "clientFile.hpp"
 #include "corutine.hpp"
 #include "file.h"
 #include "port_fd.h"
-#include <functional>
 #include <map>
-#include <memory>
-#include <optional>
 #include <string>
 
 class HttpRequst
@@ -104,31 +102,13 @@ class HttpRequst
     std::string urlEncode(const std::string& value) const;
     std::string formDataToString(const std::map<std::string, std::string>& form_data) const;
 };
-class HttpClientUtil;
-class WebSocketClient; // 前向声明
-class HttpClient : co_async
+class HttpClientUtil
 {
-    friend HttpClientUtil;
-    port targetport = (port)-1;
-    std::string targetip = "";
-    std::map<std::string, std::string> con;
-    Task<void, void> coru;
-    std::function<void(HttpClient& self)> callback = nullptr;
-    // callback
   public:
-    SocketFile cilent_socket;
-    HttpClient(SocketFile&& sok);
-    HttpClient(port target, std::string ip);
-    HttpClient(HttpClient&& move);
-    HttpClient(const HttpClient& move);
-    port getport();
-    std::string getip();
-    void setcallback(std::function<void(HttpClient& self)>&& callbackfun);
-    std::map<std::string, std::string>& getContent();
-    EventStatus eventGo();
-    bool sendRequest(const HttpRequst& request);
-    bool isKeepAlive() const;
-    void setNextCallback(std::function<void(HttpClient& self)>&& next_callback);
+    static bool initialize();
+    static bool autoRegistered;
+    static Task<void, void> httpEventloop(clientFile* self);
+    SocketFile createTcpClient(port port, std::string ip);
     class CilentKey
     {
       public:
@@ -172,16 +152,4 @@ class HttpClient : co_async
         // keep-alive相关
         static constexpr const char* keep_alive = "keep_alive";
     };
-
-    // 新增：WebSocket升级相关方法
-    bool upgradeToWebSocket(const std::string& path = "/",
-                           const std::map<std::string, std::string>& headers = {});
-    std::unique_ptr<WebSocketClient> createWebSocketClient(const std::string& path = "/");
-    bool isWebSocketUpgradeResponse() const;
-};
-class HttpClientUtil
-{
-  public:
-    static Task<void, void> httpEventloop(HttpClient* self);
-    SocketFile createTcpClient(port port, std::string ip);
 };

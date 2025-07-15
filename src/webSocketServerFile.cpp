@@ -1,4 +1,3 @@
-#include "webSocketFile.h"
 #include "protocol_constants.h" // 新增包含
 #include "serverFile.h"
 #include <algorithm>
@@ -7,19 +6,20 @@
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <string>
+#include "webSocketServerFile.h"
 
 // 初始化静态成员，自动注册WebSocket协议处理函数
-bool WebSocketUtil::autoRegistered = WebSocketUtil::initialize();
+bool WebSocketServerUtil::autoRegistered = WebSocketServerUtil::initialize();
 
 // 初始化方法，注册WebSocket协议处理函数
-bool WebSocketUtil::initialize()
+bool WebSocketServerUtil::initialize()
 {
     return serverFile::registerProtocolHandler(Protocol::WebSocket,
-                                               WebSocketUtil::wsEventloop); // 使用 Protocol 枚举
+                                               WebSocketServerUtil::wsEventloop); // 使用 Protocol 枚举
 }
 
 // WebSocket帧操作
-std::string WebSocketUtil::makeWebSocketFrame(const std::string& payload, WebSocketOpcode opcode,
+std::string WebSocketServerUtil::makeWebSocketFrame(const std::string& payload, WebSocketOpcode opcode,
                                               bool fin, bool masked)
 {
     std::string frame;
@@ -87,7 +87,7 @@ std::string WebSocketUtil::makeWebSocketFrame(const std::string& payload, WebSoc
     return frame;
 }
 
-std::string WebSocketUtil::parseWebSocketFrame(const std::string& frame)
+std::string WebSocketServerUtil::parseWebSocketFrame(const std::string& frame)
 {
     // 只实现基本解析，实际应用中需要完整处理
     if (frame.size() < 2)
@@ -185,7 +185,7 @@ std::string base64_encode(const unsigned char* input, size_t length)
 }
 
 // WebSocket握手响应
-std::string WebSocketUtil::makeWebSocketHandshake(const std::string& clientKey)
+std::string WebSocketServerUtil::makeWebSocketHandshake(const std::string& clientKey)
 {
     // 按照WebSocket规范，将客户端键与WebSocket GUID连接
     const char* guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -210,7 +210,7 @@ std::string WebSocketUtil::makeWebSocketHandshake(const std::string& clientKey)
     return response;
 }
 
-std::string WebSocketUtil::makeWebSocketHandshake(const serverFile& client)
+std::string WebSocketServerUtil::makeWebSocketHandshake(const serverFile& client)
 {
     const auto& headers = client.getContent();
     auto key_it = headers.find("sec-websocket-key");
@@ -221,10 +221,10 @@ std::string WebSocketUtil::makeWebSocketHandshake(const serverFile& client)
     }
     std::string clientKey = key_it->second;
     // 使用WebSocketUtil的方法生成握手响应
-    return WebSocketUtil::makeWebSocketHandshake(clientKey);
+    return WebSocketServerUtil::makeWebSocketHandshake(clientKey);
 }
 
-bool WebSocketUtil::tryUpToWs(serverFile& file)
+bool WebSocketServerUtil::tryUpToWs(serverFile& file)
 {
     if (shouldbeUpdataToWS(file))
     {
@@ -236,7 +236,7 @@ bool WebSocketUtil::tryUpToWs(serverFile& file)
 }
 
 // 判断是否应该升级到WebSocket
-bool WebSocketUtil::shouldbeUpdataToWS(const serverFile& httpfile)
+bool WebSocketServerUtil::shouldbeUpdataToWS(const serverFile& httpfile)
 {
     const auto& headers = httpfile.getContent();
 
@@ -273,7 +273,7 @@ bool WebSocketUtil::shouldbeUpdataToWS(const serverFile& httpfile)
 // [TODO]升级多段处理
 // [TODO]添加区分正常事件接收与关闭连接的回调
 // WebSocket事件循环
-Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
+Task<void, void> WebSocketServerUtil::wsEventloop(serverFile* self)
 {
     // 定义WebSocket解析状态
     enum class ParseState
@@ -557,7 +557,7 @@ Task<void, void> WebSocketUtil::wsEventloop(serverFile* self)
 }
 
 // WebSocketResponse实现
-WebSocketResponse::WebSocketResponse(WebSocketUtil::WebSocketOpcode opcode, bool fin, bool masked)
+WebSocketResponse::WebSocketResponse(WebSocketServerUtil::WebSocketOpcode opcode, bool fin, bool masked)
     : opcode_(opcode), fin_(fin), masked_(masked)
 {
 }
@@ -570,22 +570,22 @@ WebSocketResponse& WebSocketResponse::with_content(const std::string& new_conten
 
 WebSocketResponse WebSocketResponse::text(const std::string& content)
 {
-    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::TEXT).with_content(content);
+    return WebSocketResponse(WebSocketServerUtil::WebSocketOpcode::TEXT).with_content(content);
 }
 
 WebSocketResponse WebSocketResponse::binary(const std::string& content)
 {
-    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::BINARY).with_content(content);
+    return WebSocketResponse(WebSocketServerUtil::WebSocketOpcode::BINARY).with_content(content);
 }
 
 WebSocketResponse WebSocketResponse::ping(const std::string& content)
 {
-    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::PING).with_content(content);
+    return WebSocketResponse(WebSocketServerUtil::WebSocketOpcode::PING).with_content(content);
 }
 
 WebSocketResponse WebSocketResponse::pong(const std::string& content)
 {
-    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::PONG).with_content(content);
+    return WebSocketResponse(WebSocketServerUtil::WebSocketOpcode::PONG).with_content(content);
 }
 
 WebSocketResponse WebSocketResponse::close(uint16_t code, const std::string& reason)
@@ -599,11 +599,11 @@ WebSocketResponse WebSocketResponse::close(uint16_t code, const std::string& rea
         // 添加关闭原因
         payload.append(reason);
     }
-    return WebSocketResponse(WebSocketUtil::WebSocketOpcode::CLOSE).with_content(payload);
+    return WebSocketResponse(WebSocketServerUtil::WebSocketOpcode::CLOSE).with_content(payload);
 }
 
 WebSocketResponse::operator std::string() const
 {
     // 利用WebSocketUtil的createWebSocketFrame方法
-    return WebSocketUtil::makeWebSocketFrame(content_, opcode_, fin_, masked_);
+    return WebSocketServerUtil::makeWebSocketFrame(content_, opcode_, fin_, masked_);
 }
