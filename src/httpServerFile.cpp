@@ -9,7 +9,7 @@
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <random>
-
+#include "httpMessage.h"
 // 初始化静态成员，自动注册HTTP协议处理函数
 bool HttpServerUtil::autoRegistered = HttpServerUtil::initialize();
 
@@ -169,9 +169,9 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                     version =
                         std::string(tp.substr(second_space + 1, tp.length() - second_space - 3));
 
-                    self->getContent()[HttpResponse::RequestKey::method] = method;
-                    self->getContent()[HttpResponse::RequestKey::path] = path;
-                    self->getContent()[HttpResponse::RequestKey::version] = version;
+                    self->getContent()[HttpRequst::CilentKey::method] = method;
+                    self->getContent()[HttpRequst::CilentKey::path] = path;
+                    self->getContent()[HttpRequst::CilentKey::version] = version;
 
                     state = ParseState::HEADERS;
                 }
@@ -201,7 +201,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                     }
                     else
                     {
-                        auto it = self->getContent().find(HttpResponse::RequestKey::content_length);
+                        auto it = self->getContent().find(HttpRequst::CilentKey::content_length);
                         // auto it = self->getContent().find("content-length");
                         if (it != self->getContent().end())
                         {
@@ -305,7 +305,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
                 // TODO 读超了退回
                 if (body_read >= content_length)
                 {
-                    self->getContent()[HttpResponse::RequestKey::postcontent] = body_buffer;
+                    self->getContent()[HttpRequst::CilentKey::postcontent] = body_buffer;
                     state = ParseState::COMPLETE;
                 }
             }
@@ -378,7 +378,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             if (tp == "\r\n")
             {
                 // 分块传输结束
-                self->getContent()[HttpResponse::RequestKey::postcontent] = chunked_body;
+                self->getContent()[HttpRequst::CilentKey::postcontent] = chunked_body;
                 self->getContent()["chunked_complete"] = "true";
                 state = ParseState::COMPLETE;
             }
@@ -408,7 +408,7 @@ Task<void, void> HttpServerUtil::httpEventloop(serverFile* self)
             if (sfile.getSocketStatus() != SocketStatus::WRONG)
             {
                 // 新增：在处理请求前，将完整的原始内容存储到content中
-                self->getContent()[HttpResponse::RequestKey::orignal_content] = original_content_buffer;
+                self->getContent()[HttpRequst::CilentKey::orignal_content] = original_content_buffer;
 
                 self->handle();
 
@@ -486,88 +486,88 @@ std::string HttpServerUtil::judge_file_type(std::string_view path)
 }
 
 // HttpResponse实现
-HttpResponse HttpResponse::defult404 = HttpResponse{404};
-HttpResponse::HttpResponse(size_t status, std::string httptype, std::string servername)
-    : http_version_(std::move(httptype)), status_code_(status)
-{
-    if (status_num_string.count(status))
-    {
-        reason_phrase_ = status_num_string[status];
-    }
-    headers_["Server"] = std::move(servername);
-    headers_["Connection"] = "keep-alive";
-}
+// HttpResponse HttpResponse::defult404 = HttpResponse{404};
+// HttpResponse::HttpResponse(size_t status, std::string httptype, std::string servername)
+//     : http_version_(std::move(httptype)), status_code_(status)
+// {
+//     if (status_num_string.count(status))
+//     {
+//         reason_phrase_ = status_num_string[status];
+//     }
+//     headers_["Server"] = std::move(servername);
+//     headers_["Connection"] = "keep-alive";
+// }
 
-HttpResponse HttpResponse::text(std::string content, size_t status, std::string contenttype,
-                                std::string httptype)
-{
-    return HttpResponse{status, httptype}.with_content(content, contenttype);
-}
+// HttpResponse HttpResponse::text(std::string content, size_t status, std::string contenttype,
+//                                 std::string httptype)
+// {
+//     return HttpResponse{status, httptype}.with_content(content, contenttype);
+// }
 
-HttpResponse HttpResponse::binary(std::string content, size_t status, std::string contenttype,
-                                  std::string httptype)
-{
-    return HttpResponse{status, httptype}.with_content(content, contenttype);
-}
+// HttpResponse HttpResponse::binary(std::string content, size_t status, std::string contenttype,
+//                                   std::string httptype)
+// {
+//     return HttpResponse{status, httptype}.with_content(content, contenttype);
+// }
 
-HttpResponse HttpResponse::fromFileCache(const LocalFile& file)
-{
-    if (file)
-    {
-        return HttpResponse{200}.with_content(std::string{file.read()},
-                                              HttpServerUtil::judge_file_type(file.getPath()));
-    }
-    return defult404;
-}
+// HttpResponse HttpResponse::fromFileCache(const LocalFile& file)
+// {
+//     if (file)
+//     {
+//         return HttpResponse{200}.with_content(std::string{file.read()},
+//                                               HttpServerUtil::judge_file_type(file.getPath()));
+//     }
+//     return defult404;
+// }
 
-HttpResponse& HttpResponse::addHeader(std::string key, std::string val)
-{
-    headers_[std::move(key)] = std::move(val);
-    return *this;
-}
+// HttpResponse& HttpResponse::addHeader(std::string key, std::string val)
+// {
+//     headers_[std::move(key)] = std::move(val);
+//     return *this;
+// }
 // HttpResponse& HttpResponse::addHeader(const std::string_view key, std::string val)
 // {
 //     headers_[std::string{key}] = std::move(val);
 //     return *this;
 // }
 
-HttpResponse& HttpResponse::with_content(std::string new_content, std::string type)
-{
-    body_ = std::move(new_content);
-    headers_["Content-Type"] = std::move(type);
-    headers_["Content-Length"] = std::to_string(body_.length());
-    return *this;
-}
+// HttpResponse& HttpResponse::with_content(std::string new_content, std::string type)
+// {
+//     body_ = std::move(new_content);
+//     headers_["Content-Type"] = std::move(type);
+//     headers_["Content-Length"] = std::to_string(body_.length());
+//     return *this;
+// }
 
-HttpResponse& HttpResponse::enableChunked()
-{
-    chunked_mode_ = true;
-    headers_["Transfer-Encoding"] = "chunked";
-    headers_.erase("Content-Length"); // 分块传输时不使用Content-Length
-    return *this;
-}
+// HttpResponse& HttpResponse::enableChunked()
+// {
+//     chunked_mode_ = true;
+//     headers_["Transfer-Encoding"] = "chunked";
+//     headers_.erase("Content-Length"); // 分块传输时不使用Content-Length
+//     return *this;
+// }
 
-HttpResponse& HttpResponse::addChunk(const std::string& chunk_data)
-{
-    if (chunked_mode_)
-    {
-        body_.append(HttpServerUtil::createChunkedResponse(chunk_data));
-    }
-    else
-    {
-        body_.append(chunk_data);
-    }
-    return *this;
-}
+// HttpResponse& HttpResponse::addChunk(const std::string& chunk_data)
+// {
+//     if (chunked_mode_)
+//     {
+//         body_.append(HttpServerUtil::createChunkedResponse(chunk_data));
+//     }
+//     else
+//     {
+//         body_.append(chunk_data);
+//     }
+//     return *this;
+// }
 
-HttpResponse& HttpResponse::endChunked()
-{
-    if (chunked_mode_)
-    {
-        body_.append(HttpServerUtil::createChunkedEnd());
-    }
-    return *this;
-}
+// HttpResponse& HttpResponse::endChunked()
+// {
+//     if (chunked_mode_)
+//     {
+//         body_.append(HttpServerUtil::createChunkedEnd());
+//     }
+//     return *this;
+// }
 
 // 新增：检测是否为分块请求
 bool HttpServerUtil::isChunkedRequest(const std::map<std::string, std::string>& headers)
@@ -616,57 +616,57 @@ std::string HttpServerUtil::endChunkedRequest()
     return createChunkedEnd();
 }
 
-// 实现获取文件缓存的方法
-LocalFiles& HttpResponse::getFileCache()
-{
-    static LocalFiles fileCache;
-    return fileCache;
-}
+// // 实现获取文件缓存的方法
+// LocalFiles& HttpResponse::getFileCache()
+// {
+//     static LocalFiles fileCache;
+//     return fileCache;
+// }
 
-HttpResponse HttpResponse::formLocalFile(std::string path, std::string type)
-{
-    // 使用文件缓存获取文件内容
-    auto& fileCache = getFileCache();
-    LocalFile& file = fileCache.get(platform::fixPath(path)); // Fix path for local system
-    std::string_view file_content_view = file.read();         // Renamed to avoid conflict
+// HttpResponse HttpResponse::formLocalFile(std::string path, std::string type)
+// {
+//     // 使用文件缓存获取文件内容
+//     auto& fileCache = getFileCache();
+//     LocalFile& file = fileCache.get(platform::fixPath(path)); // Fix path for local system
+//     std::string_view file_content_view = file.read();         // Renamed to avoid conflict
 
-    if (file)
-    {
-        HttpResponse response(200);
-        response.with_content(std::string(file_content_view), type);
-        return response;
-    }
-    else
-    {
-        return defult404;
-    }
-}
+//     if (file)
+//     {
+//         HttpResponse response(200);
+//         response.with_content(std::string(file_content_view), type);
+//         return response;
+//     }
+//     else
+//     {
+//         return defult404;
+//     }
+// }
 
-HttpResponse HttpResponse::formLocalFile(std::string path)
-{
-    // 自动选择MIME类型
-    return formLocalFile(path, HttpServerUtil::judge_file_type(path));
-}
+// HttpResponse HttpResponse::formLocalFile(std::string path)
+// {
+//     // 自动选择MIME类型
+//     return formLocalFile(path, HttpServerUtil::judge_file_type(path));
+// }
 
-HttpResponse::operator std::string()
-{
-    std::ostringstream oss;
-    oss << http_version_ << " " << status_code_ << " " << reason_phrase_ << "\r\n";
+// HttpResponse::operator std::string()
+// {
+//     std::ostringstream oss;
+//     oss << http_version_ << " " << status_code_ << " " << reason_phrase_ << "\r\n";
 
-    // 如果不是分块模式且没有设置Content-Length，自动设置
-    if (!chunked_mode_ && headers_.find("Content-Length") == headers_.end())
-    {
-        headers_["Content-Length"] = std::to_string(body_.length());
-    }
+//     // 如果不是分块模式且没有设置Content-Length，自动设置
+//     if (!chunked_mode_ && headers_.find("Content-Length") == headers_.end())
+//     {
+//         headers_["Content-Length"] = std::to_string(body_.length());
+//     }
 
-    for (const auto& header : headers_)
-    {
-        oss << header.first << ": " << header.second << "\r\n";
-    }
-    oss << "\r\n";
-    oss << body_;
-    return oss.str();
-}
+//     for (const auto& header : headers_)
+//     {
+//         oss << header.first << ": " << header.second << "\r\n";
+//     }
+//     oss << "\r\n";
+//     oss << body_;
+//     return oss.str();
+// }
 
 // 新增：网络套接字相关方法实现
 int HttpServerUtil::makeSocket()

@@ -4,63 +4,63 @@
 #include <string>
 #include <string_view>
 
-struct HttpResponse
-{
-  private:
-    std::string http_version_ = "HTTP/1.1";
-    size_t status_code_ = 0;
-    std::string reason_phrase_ = "";
-    std::map<std::string, std::string> headers_;
-    std::string body_;
-    bool chunked_mode_ = false; // 分块传输模式标志
-    static HttpResponse defult404;
+// struct HttpResponse
+// {
+//   private:
+//     std::string http_version_ = "HTTP/1.1";
+//     size_t status_code_ = 0;
+//     std::string reason_phrase_ = "";
+//     std::map<std::string, std::string> headers_;
+//     std::string body_;
+//     bool chunked_mode_ = false; // 分块传输模式标志
+//     static HttpResponse defult404;
 
-  public:
-    static HttpResponse text(std::string content, size_t status = 200,
-                             std::string contenttype = "text/plain;charset=utf-8",
-                             std::string httptype = "HTTP/1.1");
-    static HttpResponse binary(std::string content, size_t status = 200,
-                               std::string contenttype = "application/octet-stream",
-                               std::string httptype = "HTTP/1.1");
-    static HttpResponse fromFileCache(const LocalFile& file);
-    static HttpResponse formLocalFile(std::string path, std::string type);
-    static HttpResponse formLocalFile(std::string path); // auto select type
-    HttpResponse& addHeader(std::string key, std::string val);
-    // HttpResponse& addHeader(const std::string_view key, std::string val);
-    HttpResponse& with_content(std::string content, std::string type = "text/plain;charset=utf-8");
-    HttpResponse(size_t status, std::string httptype = "HTTP/1.1",
-                 std::string servername = default_servername);
-    // 分块传输相关方法
-    HttpResponse& enableChunked();
-    HttpResponse& addChunk(const std::string& chunk_data);
-    HttpResponse& endChunked();
+//   public:
+//     static HttpResponse text(std::string content, size_t status = 200,
+//                              std::string contenttype = "text/plain;charset=utf-8",
+//                              std::string httptype = "HTTP/1.1");
+//     static HttpResponse binary(std::string content, size_t status = 200,
+//                                std::string contenttype = "application/octet-stream",
+//                                std::string httptype = "HTTP/1.1");
+//     static HttpResponse fromFileCache(const LocalFile& file);
+//     static HttpResponse formLocalFile(std::string path, std::string type);
+//     static HttpResponse formLocalFile(std::string path); // auto select type
+//     HttpResponse& addHeader(std::string key, std::string val);
+//     // HttpResponse& addHeader(const std::string_view key, std::string val);
+//     HttpResponse& with_content(std::string content, std::string type = "text/plain;charset=utf-8");
+//     HttpResponse(size_t status, std::string httptype = "HTTP/1.1",
+//                  std::string servername = default_servername);
+//     // 分块传输相关方法
+//     HttpResponse& enableChunked();
+//     HttpResponse& addChunk(const std::string& chunk_data);
+//     HttpResponse& endChunked();
 
-    static LocalFiles& getFileCache();
+//     static LocalFiles& getFileCache();
 
-    inline static std::string default_servername = "co_http";
-    inline static std::map<size_t, std::string> status_num_string = {{200, "OK"},
-                                                                     {404, "Not Found"}};
-    operator std::string();
-    class RequestKey
-    {
-      public:
-        static constexpr const char* method = "method";
-        static constexpr const char* path = "path";
-        static constexpr const char* version = "version";
-        static constexpr const char* content_length = "content-length";
-        static constexpr const char* postcontent = "postcontent";
-        static constexpr const char* cookie = "cookie";
-        static constexpr const char* orignal_content = "orignal_content";
-    };
-    class ResponseKey
-    {
-      public:
-        static constexpr const char* Set_Cookie = "Set-Cookie";
-        static constexpr const char* Access_Control_Allow_Origin = "Access-Control-Allow-Origin";
-        static constexpr const char* Access_Control_Allow_Credentials =
-            "Access-Control-Allow-Credentials";
-    };
-};
+//     inline static std::string default_servername = "co_http";
+//     inline static std::map<size_t, std::string> status_num_string = {{200, "OK"},
+//                                                                      {404, "Not Found"}};
+//     operator std::string();
+//     class RequestKey
+//     {
+//       public:
+//         static constexpr const char* method = "method";
+//         static constexpr const char* path = "path";
+//         static constexpr const char* version = "version";
+//         static constexpr const char* content_length = "content-length";
+//         static constexpr const char* postcontent = "postcontent";
+//         static constexpr const char* cookie = "cookie";
+//         static constexpr const char* orignal_content = "orignal_content";
+//     };
+//     class ResponseKey
+//     {
+//       public:
+//         static constexpr const char* Set_Cookie = "Set-Cookie";
+//         static constexpr const char* Access_Control_Allow_Origin = "Access-Control-Allow-Origin";
+//         static constexpr const char* Access_Control_Allow_Credentials =
+//             "Access-Control-Allow-Credentials";
+//     };
+// };
 
 class HttpServerUtil
 {

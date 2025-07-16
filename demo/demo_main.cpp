@@ -1,12 +1,9 @@
 #include "clientFile.hpp"
 #include "corutine.hpp"
-#include "debug.hpp"
 #include "file.h"
 #include "format.h"
 #include "getmessage.hpp"
 #include "http.h"
-#include "httpClientFile.h"
-#include "httpServerFile.h"
 #include "json.hpp"
 #include "login.hpp"
 #include "message.h"
@@ -21,6 +18,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "httpMessage.h"
 int each_process(uint16_t port)
 {
 
@@ -36,7 +34,7 @@ int each_process(uint16_t port)
         [&server](serverFile& connection)
         {
             auto ret = Format{"/login/%[^/]/%s", Format::Type::scanf}.parse(
-                connection.getContent()[HttpResponse::RequestKey::path]);
+                connection.getContent()[HttpRequst::CilentKey::path]);
             if (ret)
             {
                 auto context = *ret;
@@ -75,7 +73,7 @@ int each_process(uint16_t port)
         {
             // std::cout << "ok" << '\n';
             // auto cookie = file.getContent()["cookie"];
-            auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
+            auto cookie = file.getContent()[HttpRequst::CilentKey::cookie];
             // std::cout << "Received cookie: " << cookie << std::endl;
 
             // 从cookie字符串中提取session值
@@ -101,7 +99,7 @@ int each_process(uint16_t port)
             {
                 if (file.getAgreementType() == Protocol::WebSocket)
                 {
-                    auto mes = file.getContent()[WebSocketServerUtil::ContentKey::message];
+                    auto mes = file.getContent()[WebSocketResponse::ContentKey::message];
                     auto ret =
                         Format("username = %[^,], content = %s", Format::Type::scanf).parse(mes);
                     if (ret)
@@ -135,7 +133,7 @@ int each_process(uint16_t port)
                              [](serverFile& file)
                              {
                                  // std::cout << "ok" << '\n';
-                                 auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
+                                 auto cookie = file.getContent()[HttpRequst::CilentKey::cookie];
                                  // std::cout << "Received cookie in /do: " << cookie << std::endl;
 
                                  // 从cookie字符串中提取session值
@@ -169,7 +167,7 @@ int each_process(uint16_t port)
                              [](serverFile& file)
                              {
                                  // std::cout << "ok" << '\n';
-                                 auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
+                                 auto cookie = file.getContent()[HttpRequst::CilentKey::cookie];
                                  // std::cout << "Received cookie: " << cookie << std::endl;
 
                                  // 从cookie字符串中提取session值
@@ -229,10 +227,10 @@ int each_process(uint16_t port)
     server.addCallbackFormat(Format{"/api%s", Format::Type::scanf},
                              [&server](serverFile& file)
                              {
-                                 auto cookie = file.getContent()[HttpResponse::RequestKey::cookie];
+                                 auto cookie = file.getContent()[HttpRequst::CilentKey::cookie];
                                  // std::cout << "Received cookie in /do: " << cookie << std::endl;
                                  // std::cout <<
-                                 // file.getContent()[HttpResponse::RequestKey::orignal_content] <<
+                                 // file.getContent()[HttpRequst::CilentKey::orignal_content] <<
                                  // '\n'; 从cookie字符串中提取session值
                                  std::string session_cookie;
                                  size_t session_pos = cookie.find("session=");
@@ -258,7 +256,7 @@ int each_process(uint16_t port)
                                  {
                                      auto path_parse_result =
                                          Format{"/api%s", Format::Type::scanf}.parse(
-                                             file.getContent()[HttpResponse::RequestKey::path]);
+                                             file.getContent()[HttpRequst::CilentKey::path]);
                                      if (path_parse_result)
                                      {
                                          auto api_path =
@@ -275,7 +273,7 @@ int each_process(uint16_t port)
         Format{"/register", Format::Type::same},
         [](serverFile& file)
         {
-            auto content = file.getContent()[HttpResponse::RequestKey::postcontent];
+            auto content = file.getContent()[HttpRequst::CilentKey::postcontent];
             auto ret =
                 Format{"name = '%[^']', password = '%[^']'", Format::Type::scanf}.parse(content);
             if (!ret)
@@ -305,7 +303,7 @@ int each_process(uint16_t port)
         Format{"/deregistration", Format::Type::same},
         [](serverFile& file)
         {
-            auto content = file.getContent()[HttpResponse::RequestKey::postcontent];
+            auto content = file.getContent()[HttpRequst::CilentKey::postcontent];
             auto ret =
                 Format{"name = '%[^']', password = '%[^']'", Format::Type::scanf}.parse(content);
             if (!ret)
@@ -376,7 +374,7 @@ int main()
                         {
                             std::cout << "http get: " << '\n';
                             std::cout
-                                << self.getContent()[HttpResponse::RequestKey::orignal_content]
+                                << self.getContent()[HttpRequst::CilentKey::orignal_content]
                                 << '\n';
                         }
                     }
@@ -384,7 +382,7 @@ int main()
                     {
                         std::cout << "ws server get: " << '\n';
 
-                        std::cout << self.getContent()[WebSocketServerUtil::ContentKey::message]
+                        std::cout << self.getContent()[WebSocketResponse::ContentKey::message]
                                   << '\n';
                     }
                 });
@@ -411,7 +409,7 @@ int main()
                         if (WebSocketClientUtil::shouldbeUpdataToWS(self))
                         {
                             self.upgradeProtocol(Protocol::WebSocket);
-                            self << WebSocketMessage::text("ciallo from ws client!\n");
+                            self << WebSocketRequst::text("ciallo from ws client!\n");
                             self.setcallback(
                                 [](clientFile& self_ws)
                                 {

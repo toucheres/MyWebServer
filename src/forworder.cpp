@@ -3,7 +3,7 @@
 #include "format.h"
 #include "httpServerFile.h"
 #include <algorithm>
-
+#include "httpMessage.h"
 // tcpForwarder::tcpForwarder(port a_from, port a_to, const std::string& target_host)
 //     : target_port(a_to), target_host(target_host)
 // {
@@ -275,7 +275,7 @@ httpForwarder::httpForwarder(port listen_port, port target_port, const std::stri
         Format{"", Format::Type::prefix},
         [](serverFile& in)
         {
-            std::string get = in.getContent()[HttpResponse::RequestKey::orignal_content];
+            std::string get = in.getContent()[HttpRequst::CilentKey::orignal_content];
             
         });
 }

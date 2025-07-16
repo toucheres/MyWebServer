@@ -2,9 +2,9 @@
 #include "clientFile.hpp"
 #include "corutine.hpp"
 #include "file.h"
+#include "httpMessage.h"
 #include "httpServerFile.h"
 #include <algorithm>
-#include <sstream>
 bool HttpClientUtil::autoRegistered = HttpClientUtil::initialize();
 bool HttpClientUtil::initialize()
 {
@@ -85,9 +85,9 @@ Task<void, void> HttpClientUtil::httpEventloop(clientFile* self)
                         reason_phrase = std::string(
                             tp.substr(second_space + 1, tp.length() - second_space - 3));
 
-                        self->getContent()[CilentKey::version] = version;
-                        self->getContent()[CilentKey::status_code] = status_code;
-                        self->getContent()[CilentKey::reason_phrase] = reason_phrase;
+                        self->getContent()[HttpRequst::CilentKey::version] = version;
+                        self->getContent()[HttpRequst::CilentKey::status_code] = status_code;
+                        self->getContent()[HttpRequst::CilentKey::reason_phrase] = reason_phrase;
 
                         state = HttpServerUtil::ParseState::HEADERS;
                     }
@@ -132,7 +132,7 @@ Task<void, void> HttpClientUtil::httpEventloop(clientFile* self)
                     is_chunked = HttpServerUtil::isChunkedRequest(self->getContent());
 
                     // 检查Content-Length
-                    auto it = self->getContent().find(CilentKey::content_length);
+                    auto it = self->getContent().find(HttpRequst::CilentKey::content_length);
                     if (it != self->getContent().end())
                     {
                         try
@@ -157,7 +157,7 @@ Task<void, void> HttpClientUtil::httpEventloop(clientFile* self)
                     {
                         state = HttpServerUtil::ParseState::CHUNKED_SIZE;
                         chunked_body.clear();
-                        self->getContent()[CilentKey::is_chunked] = "true";
+                        self->getContent()[HttpRequst::CilentKey::is_chunked] = "true";
                     }
                     else
                     {
@@ -225,7 +225,7 @@ Task<void, void> HttpClientUtil::httpEventloop(clientFile* self)
 
                     if (body_read >= content_length)
                     {
-                        self->getContent()[CilentKey::body] = body_buffer;
+                        self->getContent()[HttpRequst::CilentKey::body] = body_buffer;
                         state = HttpServerUtil::ParseState::COMPLETE;
                     }
                 }
@@ -292,8 +292,8 @@ Task<void, void> HttpClientUtil::httpEventloop(clientFile* self)
                 if (tp == "\r\n")
                 {
                     // 分块传输结束
-                    self->getContent()[CilentKey::body] = chunked_body;
-                    self->getContent()[CilentKey::chunked_complete] = "true";
+                    self->getContent()[HttpRequst::CilentKey::body] = chunked_body;
+                    self->getContent()[HttpRequst::CilentKey::chunked_complete] = "true";
                     state = HttpServerUtil::ParseState::COMPLETE;
                 }
                 else
@@ -302,7 +302,7 @@ Task<void, void> HttpClientUtil::httpEventloop(clientFile* self)
                     size_t index = tp.find(": ");
                     if (index != std::string_view::npos)
                     {
-                        std::string key = std::string(CilentKey::trailer_prefix) +
+                        std::string key = std::string(HttpRequst::CilentKey::trailer_prefix) +
                                           std::string(tp.substr(0, index));
                         std::transform(key.begin(), key.end(), key.begin(),
                                        [](unsigned char c) { return std::tolower(c); });
@@ -321,10 +321,10 @@ Task<void, void> HttpClientUtil::httpEventloop(clientFile* self)
             case HttpServerUtil::ParseState::COMPLETE:
             {
                 // 将完整的原始内容存储
-                self->getContent()[CilentKey::original_content] = original_content_buffer;
+                self->getContent()[HttpRequst::CilentKey::original_content] = original_content_buffer;
 
                 // 设置keep-alive状态
-                self->getContent()[CilentKey::keep_alive] =
+                self->getContent()[HttpRequst::CilentKey::keep_alive] =
                     connection_keep_alive ? "true" : "false";
 
                 // 客户端解析完成，执行回调
@@ -390,9 +390,9 @@ clientFile::clientFile(port target, std::string ip)
 }
 
 clientFile::clientFile(clientFile&& move)
-    : con(std::move(move.con)), coru(std::move(move.coru)),
-      cilent_socket(std::move(move.cilent_socket)), callback(std::move(move.callback)),
-      targetport(move.targetport), targetip(std::move(move.targetip))
+    : targetport(move.targetport), targetip(std::move(move.targetip)), con(std::move(move.con)),
+      coru(std::move(move.coru)), cilent_socket(std::move(move.cilent_socket)),
+      callback(std::move(move.callback))
 {
     // 移动后原对象的端口设置为无效值
     move.targetport = (port)-1;
@@ -413,226 +413,4 @@ clientFile::clientFile(const clientFile& copy)
 void clientFile::setcallback(std::function<void(clientFile& self)>&& callback)
 {
     this->callback = std::move(callback);
-}
-
-// HttpRequst 实现
-HttpRequst::HttpRequst(const std::string& path, const std::string& method)
-    : path_(path), method_(method)
-{
-    // 设置默认头部
-    headers_["Host"] = "localhost";
-    headers_["User-Agent"] = "HttpClient/1.0";
-    headers_["Accept"] = "*/*";
-    headers_["Connection"] = "keep-alive";
-}
-
-// 静态工厂方法
-HttpRequst HttpRequst::GET(const std::string& path)
-{
-    return HttpRequst(path, HttpRequestType::GET);
-}
-
-HttpRequst HttpRequst::POST(const std::string& path, const std::string& body)
-{
-    HttpRequst request(path, HttpRequestType::POST);
-    if (!body.empty())
-    {
-        request.setBody(body);
-    }
-    return request;
-}
-
-HttpRequst HttpRequst::PUT(const std::string& path, const std::string& body)
-{
-    HttpRequst request(path, HttpRequestType::PUT);
-    if (!body.empty())
-    {
-        request.setBody(body);
-    }
-    return request;
-}
-
-HttpRequst HttpRequst::DELETE(const std::string& path)
-{
-    return HttpRequst(path, HttpRequestType::DELETE);
-}
-
-HttpRequst HttpRequst::text(const std::string& path, const std::string& content,
-                            const std::string& method, const std::string& content_type)
-{
-    return HttpRequst(path, method).setBody(content, content_type);
-}
-
-HttpRequst HttpRequst::json(const std::string& path, const std::string& json_content,
-                            const std::string& method)
-{
-    return HttpRequst(path, method).setJsonBody(json_content);
-}
-
-HttpRequst HttpRequst::form(const std::string& path,
-                            const std::map<std::string, std::string>& form_data,
-                            const std::string& method)
-{
-    return HttpRequst(path, method).setFormBody(form_data);
-}
-
-// 链式调用方法
-HttpRequst& HttpRequst::addHeader(const std::string& key, const std::string& value)
-{
-    headers_[key] = value;
-    return *this;
-}
-
-HttpRequst& HttpRequst::setUserAgent(const std::string& user_agent)
-{
-    headers_["User-Agent"] = user_agent;
-    return *this;
-}
-
-HttpRequst& HttpRequst::setContentType(const std::string& content_type)
-{
-    headers_["Content-Type"] = content_type;
-    return *this;
-}
-
-HttpRequst& HttpRequst::setAuthorization(const std::string& auth)
-{
-    headers_["Authorization"] = auth;
-    return *this;
-}
-
-HttpRequst& HttpRequst::setCookie(const std::string& cookie)
-{
-    headers_["Cookie"] = cookie;
-    return *this;
-}
-
-HttpRequst& HttpRequst::setBody(const std::string& body, const std::string& content_type)
-{
-    body_ = body;
-    if (!content_type.empty())
-    {
-        setContentType(content_type);
-    }
-    if (!chunked_mode_)
-    {
-        headers_["Content-Length"] = std::to_string(body_.length());
-    }
-    return *this;
-}
-
-HttpRequst& HttpRequst::setJsonBody(const std::string& json)
-{
-    return setBody(json, ContentType::APPLICATION_JSON);
-}
-
-HttpRequst& HttpRequst::setFormBody(const std::map<std::string, std::string>& form_data)
-{
-    std::string form_string = formDataToString(form_data);
-    return setBody(form_string, ContentType::APPLICATION_FORM);
-}
-
-HttpRequst& HttpRequst::enableChunked()
-{
-    chunked_mode_ = true;
-    headers_["Transfer-Encoding"] = "chunked";
-    headers_.erase("Content-Length"); // 分块传输时不使用Content-Length
-    return *this;
-}
-
-HttpRequst& HttpRequst::addChunk(const std::string& chunk_data)
-{
-    if (chunked_mode_)
-    {
-        body_.append(HttpServerUtil::createChunkedResponse(chunk_data));
-    }
-    else
-    {
-        body_.append(chunk_data);
-    }
-    return *this;
-}
-
-HttpRequst& HttpRequst::endChunked()
-{
-    if (chunked_mode_)
-    {
-        body_.append(HttpServerUtil::createChunkedEnd());
-    }
-    return *this;
-}
-
-// 转换为字符串
-HttpRequst::operator std::string() const
-{
-    return toString();
-}
-
-std::string HttpRequst::toString() const
-{
-    std::ostringstream oss;
-
-    // 请求行
-    oss << method_ << " " << path_ << " " << http_version_ << "\r\n";
-
-    // 如果不是分块模式且有body但没有设置Content-Length，自动设置
-    if (!chunked_mode_ && !body_.empty() && headers_.find("Content-Length") == headers_.end())
-    {
-        const_cast<HttpRequst*>(this)->headers_["Content-Length"] = std::to_string(body_.length());
-    }
-
-    // 头部
-    for (const auto& header : headers_)
-    {
-        oss << header.first << ": " << header.second << "\r\n";
-    }
-
-    // 空行分隔头部和正文
-    oss << "\r\n";
-
-    // 正文
-    oss << body_;
-
-    return oss.str();
-}
-
-// 辅助方法
-std::string HttpRequst::urlEncode(const std::string& value) const
-{
-    std::ostringstream encoded;
-    encoded.fill('0');
-    encoded << std::hex;
-
-    for (char c : value)
-    {
-        // 保留字母、数字和一些安全字符
-        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
-        {
-            encoded << c;
-        }
-        else
-        {
-            encoded << '%' << std::setw(2) << (unsigned char)c;
-        }
-    }
-
-    return encoded.str();
-}
-
-std::string HttpRequst::formDataToString(const std::map<std::string, std::string>& form_data) const
-{
-    std::ostringstream oss;
-    bool first = true;
-
-    for (const auto& pair : form_data)
-    {
-        if (!first)
-        {
-            oss << "&";
-        }
-        oss << urlEncode(pair.first) << "=" << urlEncode(pair.second);
-        first = false;
-    }
-
-    return oss.str();
 }
